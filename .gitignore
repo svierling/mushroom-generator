@@ -97,3 +97,24 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Project-specific
+# Migration code kept for reference but not needed for builds
+# Uncomment if you want to exclude: /migration_code/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build output (additional)
+/WebGLBuilds/
+/StandaloneBuilds/
+/*.zip
+
+# Claude Code scratchpad (temporary files)
+.claude/scratchpad/
