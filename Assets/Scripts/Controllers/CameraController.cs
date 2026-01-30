@@ -33,6 +33,12 @@ public class CameraController : MonoBehaviour
         sprintAction = inputActions.Player.Sprint;
     }
 
+    private void Start()
+    {
+        // Restore camera position from WorldManager if a world is loaded
+        RestoreCameraPosition();
+    }
+
     private void OnEnable()
     {
         moveAction.Enable();
@@ -43,6 +49,38 @@ public class CameraController : MonoBehaviour
     {
         moveAction.Disable();
         sprintAction.Disable();
+
+        // Save camera position when disabled (scene transition or quit)
+        SaveCameraPosition();
+    }
+
+    private void OnApplicationQuit()
+    {
+        // Ensure camera position is saved on quit
+        SaveCameraPosition();
+    }
+
+    /// <summary>
+    /// Restore camera position from the currently loaded world.
+    /// </summary>
+    private void RestoreCameraPosition()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            Vector2 savedPosition = WorldManager.Instance.CurrentWorld.lastCameraPosition;
+            SetOffset(savedPosition);
+        }
+    }
+
+    /// <summary>
+    /// Save current camera position to the loaded world.
+    /// </summary>
+    private void SaveCameraPosition()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            WorldManager.Instance.SaveCameraPosition(cameraOffset);
+        }
     }
 
     private void LateUpdate()

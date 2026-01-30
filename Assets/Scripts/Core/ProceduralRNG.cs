@@ -1,19 +1,36 @@
 /// <summary>
 /// Procedural random number generator that exactly replicates the C++ implementation.
 /// This ensures deterministic mushroom generation matching the original application.
+/// Extended to support world seeds for different "generations".
 /// </summary>
 public class ProceduralRNG
 {
     private uint nProcGen;
 
     /// <summary>
-    /// Initialize RNG with spatial coordinates.
+    /// Initialize RNG with spatial coordinates (legacy constructor for backwards compatibility).
     /// Seed calculation: (x & 0xFFFF) << 16 | (y & 0xFFFF)
     /// </summary>
     public ProceduralRNG(uint x, uint y)
     {
         // CRITICAL: Exact seed calculation from C++ to ensure determinism
         nProcGen = ((x & 0xFFFF) << 16) | (y & 0xFFFF);
+    }
+
+    /// <summary>
+    /// Initialize RNG with world seed and spatial coordinates.
+    /// Different world seeds produce different results for the same coordinates.
+    /// </summary>
+    /// <param name="worldSeed">Unique seed for this world/generation</param>
+    /// <param name="x">Sector X coordinate</param>
+    /// <param name="y">Sector Y coordinate</param>
+    public ProceduralRNG(uint worldSeed, uint x, uint y)
+    {
+        // Combine world seed with coordinates for unique per-world generation
+        // XOR the world seed with coordinates before applying the original formula
+        uint seedX = x ^ worldSeed;
+        uint seedY = y ^ (worldSeed >> 16 | worldSeed << 16); // Rotate world seed for Y
+        nProcGen = ((seedX & 0xFFFF) << 16) | (seedY & 0xFFFF);
     }
 
     /// <summary>

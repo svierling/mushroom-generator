@@ -22,15 +22,25 @@ public struct MushroomData
 
     /// <summary>
     /// Generate mushroom data for a specific world sector using procedural generation.
-    /// This method produces identical results to the C++ implementation for the same coordinates.
+    /// Uses the world seed from WorldManager for different results per world.
+    /// Falls back to coordinate-only seeding if no world is loaded (backwards compatibility).
     /// </summary>
     /// <param name="sectorX">World X coordinate of the sector</param>
     /// <param name="sectorY">World Y coordinate of the sector</param>
     /// <returns>MushroomData containing existence and type information</returns>
     public static MushroomData Generate(uint sectorX, uint sectorY)
     {
-        // Create RNG with sector coordinates as seed
-        var rng = new ProceduralRNG(sectorX, sectorY);
+        // Create RNG with world seed (if available) and sector coordinates
+        ProceduralRNG rng;
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            rng = new ProceduralRNG(WorldManager.Instance.WorldSeed, sectorX, sectorY);
+        }
+        else
+        {
+            // Fallback to original behavior for backwards compatibility
+            rng = new ProceduralRNG(sectorX, sectorY);
+        }
 
         var data = new MushroomData
         {
