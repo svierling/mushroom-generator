@@ -25,6 +25,12 @@ public class MushroomGenerator : MonoBehaviour
     private List<MushroomInstance> activeMushroomPool = new List<MushroomInstance>();
     private Queue<MushroomInstance> inactiveMushroomPool = new Queue<MushroomInstance>();
 
+    // Cached visible-tile AABB — regeneration is skipped when neither the AABB
+    // nor the zoom has changed. See GroundTileGenerator for the same technique.
+    private int lastMinTileX, lastMaxTileX, lastMinTileY, lastMaxTileY;
+    private float lastOrthoSize;
+    private bool hasCachedFrame;
+
     private void Start()
     {
         // Pre-warm object pool to avoid mid-frame allocations
@@ -85,6 +91,20 @@ public class MushroomGenerator : MonoBehaviour
         int maxTileX = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.x, trTile.x), Mathf.Max(blTile.x, brTile.x)));
         int minTileY = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.y, trTile.y), Mathf.Min(blTile.y, brTile.y)));
         int maxTileY = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.y, trTile.y), Mathf.Max(blTile.y, brTile.y)));
+
+        // Skip regeneration when visible AABB and zoom are unchanged; character
+        // moving sub-tile amounts doesn't shift any tile in/out of view.
+        if (hasCachedFrame &&
+            minTileX == lastMinTileX && maxTileX == lastMaxTileX &&
+            minTileY == lastMinTileY && maxTileY == lastMaxTileY &&
+            Mathf.Approximately(mainCamera.orthographicSize, lastOrthoSize))
+        {
+            return;
+        }
+        lastMinTileX = minTileX; lastMaxTileX = maxTileX;
+        lastMinTileY = minTileY; lastMaxTileY = maxTileY;
+        lastOrthoSize = mainCamera.orthographicSize;
+        hasCachedFrame = true;
 
         ReturnAllToPool();
 

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Follow-camera with a deadzone window. The player character can roam within
@@ -25,8 +26,19 @@ public class CameraController : MonoBehaviour
     [Range(0f, 0.9f)]
     [SerializeField] private float deadzoneHalfHeightScreenFraction = 0.33f;
 
+    [Header("Zoom")]
+    [Tooltip("Zoom multipliers in ascending order. Index 1 is the reference '1x' level; the camera's initial orthographicSize is treated as the 1x size.")]
+    [SerializeField] private float[] zoomLevels = { 0.5f, 1f, 2f };
+    [Tooltip("Which zoom level the camera boots up at. 0=0.5x, 1=1x, 2=2x.")]
+    [SerializeField] private int defaultZoomIndex = 1;
+
     private const float CAMERA_Z = -10f;
+    private const float SCROLL_STEP_THRESHOLD = 0.5f;
+
     private Camera cam;
+    private float baseOrthoSize;
+    private int currentZoomIndex;
+    private float scrollAccumulator;
 
     /// <summary>Camera position expressed in pre-iso pixel units (Unity units × 16). Kept for UI back-compat.</summary>
     public Vector2 CameraOffset => new Vector2(transform.position.x * 16f, transform.position.y * 16f);
@@ -35,6 +47,12 @@ public class CameraController : MonoBehaviour
     {
         cam = GetComponent<Camera>();
         if (cam == null) cam = Camera.main;
+
+        // Whatever orthographicSize the Main Camera is configured with in the
+        // scene becomes the "1x" reference. All zoom levels are multipliers
+        // against this base.
+        baseOrthoSize = cam != null ? cam.orthographicSize : 5f;
+        currentZoomIndex = Mathf.Clamp(defaultZoomIndex, 0, zoomLevels.Length - 1);
 
         if (target == null)
         {
@@ -49,6 +67,59 @@ public class CameraController : MonoBehaviour
     private void Start()
     {
         RestoreCameraPosition();
+        RestoreZoom();
+        ApplyZoom();
+    }
+
+    private void Update()
+    {
+        if (cam == null) return;
+
+        // Number-key jumps: 1/2/3 → index 0/1/2 (0.5x / 1x / 2x)
+        Keyboard kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.digit1Key.wasPressedThisFrame) SetZoomIndex(0);
+            else if (kb.digit2Key.wasPressedThisFrame) SetZoomIndex(1);
+            else if (kb.digit3Key.wasPressedThisFrame) SetZoomIndex(2);
+        }
+
+        // Mouse wheel: accumulate small deltas until we cross a threshold, then step.
+        // Standard scroll wheels emit ~1 unit per click; the threshold gives one
+        // zoom step per click without letting rapid trackpad flicks skip past a level.
+        Mouse mouse = Mouse.current;
+        if (mouse != null)
+        {
+            float scroll = mouse.scroll.y.ReadValue();
+            scrollAccumulator += scroll;
+            if (scrollAccumulator >  SCROLL_STEP_THRESHOLD)
+            {
+                SetZoomIndex(currentZoomIndex + 1);
+                scrollAccumulator = 0f;
+            }
+            else if (scrollAccumulator < -SCROLL_STEP_THRESHOLD)
+            {
+                SetZoomIndex(currentZoomIndex - 1);
+                scrollAccumulator = 0f;
+            }
+        }
+    }
+
+    private void SetZoomIndex(int index)
+    {
+        int clamped = Mathf.Clamp(index, 0, zoomLevels.Length - 1);
+        if (clamped == currentZoomIndex) return;
+        currentZoomIndex = clamped;
+        ApplyZoom();
+        SaveZoom();
+    }
+
+    private void ApplyZoom()
+    {
+        if (cam == null || zoomLevels == null || zoomLevels.Length == 0) return;
+        float zoom = zoomLevels[currentZoomIndex];
+        // Zoom > 1 = closer (smaller view), zoom < 1 = further (larger view).
+        cam.orthographicSize = baseOrthoSize / zoom;
     }
 
     private void OnDisable()
@@ -126,6 +197,27 @@ public class CameraController : MonoBehaviour
         if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
         {
             WorldManager.Instance.SaveCameraPosition(CameraOffset);
+        }
+    }
+
+    private void RestoreZoom()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            int saved = WorldManager.Instance.CurrentWorld.lastZoomIndex;
+            // Guard against out-of-range saves (older worlds default to 0, which
+            // happens to be the 0.5x level — we still want 1x as the sensible
+            // default for worlds that predate zoom persistence).
+            if (saved < 0 || saved >= zoomLevels.Length) saved = defaultZoomIndex;
+            currentZoomIndex = saved;
+        }
+    }
+
+    private void SaveZoom()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            WorldManager.Instance.SaveZoomIndex(currentZoomIndex);
         }
     }
 }

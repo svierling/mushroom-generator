@@ -36,6 +36,14 @@ public class GroundTileGenerator : MonoBehaviour
     private readonly List<GroundTileInstance> activePool = new List<GroundTileInstance>();
     private readonly Queue<GroundTileInstance> inactivePool = new Queue<GroundTileInstance>();
 
+    // Cached AABB from the last regeneration. If the same range covers the
+    // camera this frame, the existing tiles are still correct and we skip the
+    // whole iteration. Camera moving sub-tile amounts won't trigger a rebuild
+    // because the padded rect only picks up new tiles at integer boundaries.
+    private int lastMinTileX, lastMaxTileX, lastMinTileY, lastMaxTileY;
+    private float lastOrthoSize;
+    private bool hasCachedFrame;
+
     private void Start()
     {
         if (flatGrassSprite == null)
@@ -130,6 +138,22 @@ public class GroundTileGenerator : MonoBehaviour
         int maxTileX = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.x, trTile.x), Mathf.Max(blTile.x, brTile.x)));
         int minTileY = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.y, trTile.y), Mathf.Min(blTile.y, brTile.y)));
         int maxTileY = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.y, trTile.y), Mathf.Max(blTile.y, brTile.y)));
+
+        // Skip regeneration when the visible tile range and zoom are unchanged.
+        // Most frames the character has moved sub-tile amounts and the pool is
+        // already correctly configured — huge win at 0.5x zoom where 2000+ tiles
+        // otherwise get returned and re-spawned each frame for no visible change.
+        if (hasCachedFrame &&
+            minTileX == lastMinTileX && maxTileX == lastMaxTileX &&
+            minTileY == lastMinTileY && maxTileY == lastMaxTileY &&
+            Mathf.Approximately(mainCamera.orthographicSize, lastOrthoSize))
+        {
+            return;
+        }
+        lastMinTileX = minTileX; lastMaxTileX = maxTileX;
+        lastMinTileY = minTileY; lastMaxTileY = maxTileY;
+        lastOrthoSize = mainCamera.orthographicSize;
+        hasCachedFrame = true;
 
         ReturnAllToPool();
 
