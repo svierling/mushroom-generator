@@ -490,10 +490,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   moveSpeedUnitsPerSecond: 7.5
   sprintMultiplier: 2
-  sprite: {fileID: 0}
+  walkSheet: {fileID: 2800000, guid: 42e7c4d0a21b4544eb68aac627e6a064, type: 3}
+  sprintSheet: {fileID: 2800000, guid: 7ce02da99cd8bd74da1207c9e3f9c9ee, type: 3}
+  cellSize: {x: 48, y: 64}
+  walkColumns: 6
+  sprintColumns: 8
+  walkFps: 10
+  sprintFps: 16
+  pivotNormalized: {x: 0.5, y: 0.0625}
   placeholderColor: {r: 0.86, g: 0.3, b: 0.3, a: 1}
   placeholderShadowColor: {r: 0.4, g: 0.1, b: 0.1, a: 1}
   placeholderSizePixels: {x: 24, y: 32}
+  showShadow: 1
+  shadowColor: {r: 0, g: 0, b: 0, a: 0.35}
+  shadowSizePixels: {x: 24, y: 12}
 --- !u!212 &244941749
 SpriteRenderer:
   serializedVersion: 2
@@ -2364,8 +2374,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GroundMeshRenderer
   mainCamera: {fileID: 519420031}
   fillColor: {r: 0.3, g: 0.65, b: 0.2, a: 1}
-  borderColor: {r: 0.2, g: 0.47, b: 0.13, a: 1}
-  borderThickness: 0.06
+  borderColor: {r: 0.26, g: 0.58, b: 0.17, a: 1}
+  showBorders: 1
+  variationTexture: {fileID: 0}
+  variationDensity: 0.05
   sortingOrder: -1000000
 --- !u!23 &803897055
 MeshRenderer:
