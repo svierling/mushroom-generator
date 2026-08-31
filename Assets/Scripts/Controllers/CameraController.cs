@@ -1,128 +1,116 @@
 using UnityEngine;
 
 /// <summary>
-/// Controls camera movement and tracks camera offset for sector generation.
-/// Handles WASD input for infinite scrolling through the mushroom world.
+/// Follow-camera with a deadzone window. The player character can roam within
+/// a central rectangle on screen without the camera moving; only when the
+/// character pushes against the edge does the camera scroll to keep them
+/// inside the window.
 ///
-/// IMPORTANT SETUP STEPS:
-/// 1. In Unity, select Assets/Settings/InputActions.inputactions
-/// 2. In Inspector, check "Generate C# Class"
-/// 3. Set "Class Name" to "InputActions"
-/// 4. Click "Apply"
-/// 5. If compile errors occur, use the temporary Legacy Input version below
+/// Backward-compat: <see cref="CameraOffset"/> and <see cref="SetOffset"/> keep
+/// the same pixel-offset semantics they had pre-iso, so the existing search /
+/// coordinate-tracker UI keeps working. SetOffset now teleports the player
+/// (via <see cref="PlayerController.TeleportToTile"/>), and the camera catches
+/// up on the next frame's deadzone follow.
 /// </summary>
 public class CameraController : MonoBehaviour
 {
-    [Header("Movement Settings")]
-    [SerializeField] private float moveSpeed = 120f; // 120 pixels per second (2 pixels per frame @ 60fps)
-    [SerializeField] private float sprintMultiplier = 2.0f; // Speed multiplier when holding Shift
+    [Header("Follow Target")]
+    [SerializeField] private PlayerController target;
 
-    // Track camera offset in pixel coordinates (not Unity units)
-    private Vector2 cameraOffset = Vector2.zero;
-    public Vector2 CameraOffset => cameraOffset;
+    [Header("Deadzone")]
+    [Tooltip("Half-width of the deadzone rectangle in Unity units. Character can roam within +/- this from camera center without the camera moving.")]
+    [SerializeField] private float deadzoneHalfWidthUnits = 4f;
+    [Tooltip("Half-height of the deadzone rectangle in Unity units.")]
+    [SerializeField] private float deadzoneHalfHeightUnits = 2f;
 
-    // Unity Input System
-    private InputActions inputActions;
-    private UnityEngine.InputSystem.InputAction moveAction;
-    private UnityEngine.InputSystem.InputAction sprintAction;
+    private const float CAMERA_Z = -10f;
+
+    /// <summary>Camera position expressed in pre-iso pixel units (Unity units × 16). Kept for UI back-compat.</summary>
+    public Vector2 CameraOffset => new Vector2(transform.position.x * 16f, transform.position.y * 16f);
 
     private void Awake()
     {
-        inputActions = new InputActions();
-        moveAction = inputActions.Player.Move;
-        sprintAction = inputActions.Player.Sprint;
+        if (target == null)
+        {
+            target = FindFirstObjectByType<PlayerController>();
+            if (target == null)
+            {
+                Debug.LogError("CameraController: no PlayerController target assigned and none found in the scene.");
+            }
+        }
     }
 
     private void Start()
     {
-        // Restore camera position from WorldManager if a world is loaded
         RestoreCameraPosition();
-    }
-
-    private void OnEnable()
-    {
-        moveAction.Enable();
-        sprintAction.Enable();
     }
 
     private void OnDisable()
     {
-        moveAction.Disable();
-        sprintAction.Disable();
-
-        // Save camera position when disabled (scene transition or quit)
         SaveCameraPosition();
     }
 
     private void OnApplicationQuit()
     {
-        // Ensure camera position is saved on quit
         SaveCameraPosition();
-    }
-
-    /// <summary>
-    /// Restore camera position from the currently loaded world.
-    /// </summary>
-    private void RestoreCameraPosition()
-    {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
-        {
-            Vector2 savedPosition = WorldManager.Instance.CurrentWorld.lastCameraPosition;
-            SetOffset(savedPosition);
-        }
-    }
-
-    /// <summary>
-    /// Save current camera position to the loaded world.
-    /// </summary>
-    private void SaveCameraPosition()
-    {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
-        {
-            WorldManager.Instance.SaveCameraPosition(cameraOffset);
-        }
     }
 
     private void LateUpdate()
     {
-        // Read WASD input as Vector2
-        Vector2 movement = moveAction.ReadValue<Vector2>();
+        if (target == null) return;
 
-        // Check if sprint is being held
-        bool isSprinting = sprintAction.IsPressed();
-        float currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
+        Vector3 targetPos = target.transform.position;
+        Vector3 cameraPos = transform.position;
 
-        // Update offset in pixel coordinates
-        cameraOffset += movement * currentSpeed * Time.deltaTime;
+        float dx = targetPos.x - cameraPos.x;
+        float dy = targetPos.y - cameraPos.y;
 
-        // Update camera position (convert pixels to Unity units: 16 pixels = 1 unit)
-        // No rounding - let Unity handle sub-pixel rendering for smooth movement
-        transform.position = new Vector3(
-            cameraOffset.x / 16f,
-            cameraOffset.y / 16f,
-            -10f // Camera Z position
-        );
+        if (dx >  deadzoneHalfWidthUnits)  cameraPos.x = targetPos.x - deadzoneHalfWidthUnits;
+        if (dx < -deadzoneHalfWidthUnits)  cameraPos.x = targetPos.x + deadzoneHalfWidthUnits;
+        if (dy >  deadzoneHalfHeightUnits) cameraPos.y = targetPos.y - deadzoneHalfHeightUnits;
+        if (dy < -deadzoneHalfHeightUnits) cameraPos.y = targetPos.y + deadzoneHalfHeightUnits;
+
+        transform.position = new Vector3(cameraPos.x, cameraPos.y, CAMERA_Z);
     }
 
     /// <summary>
-    /// Reset camera to origin (useful for testing).
+    /// Teleport to a specific pixel offset — used by the coordinate search UI.
+    /// Converts the target Unity position back to a tile, teleports the player
+    /// there, and snaps the camera on top so the deadzone follow doesn't have
+    /// to catch up.
     /// </summary>
+    public void SetOffset(Vector2 pixelOffset)
+    {
+        float unityX = pixelOffset.x / 16f;
+        float unityY = pixelOffset.y / 16f;
+
+        if (target != null)
+        {
+            Vector2 tile = IsoProjection.UnityToWorld(unityX, unityY);
+            target.TeleportToTile(tile.x, tile.y);
+        }
+
+        transform.position = new Vector3(unityX, unityY, CAMERA_Z);
+    }
+
     public void ResetToOrigin()
     {
-        cameraOffset = Vector2.zero;
-        transform.position = new Vector3(0, 0, -10f);
+        SetOffset(Vector2.zero);
     }
 
-    /// <summary>
-    /// Set camera to specific pixel offset.
-    /// </summary>
-    public void SetOffset(Vector2 newOffset)
+    private void RestoreCameraPosition()
     {
-        cameraOffset = newOffset;
-        transform.position = new Vector3(
-            cameraOffset.x / 16f,
-            cameraOffset.y / 16f,
-            -10f
-        );
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            SetOffset(WorldManager.Instance.CurrentWorld.lastCameraPosition);
+        }
+    }
+
+    private void SaveCameraPosition()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            WorldManager.Instance.SaveCameraPosition(CameraOffset);
+        }
     }
 }
