@@ -1,128 +1,224 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
-/// Controls camera movement and tracks camera offset for sector generation.
-/// Handles WASD input for infinite scrolling through the mushroom world.
+/// Follow-camera with a deadzone window. The player character can roam within
+/// a central rectangle on screen without the camera moving; only when the
+/// character pushes against the edge does the camera scroll to keep them
+/// inside the window.
 ///
-/// IMPORTANT SETUP STEPS:
-/// 1. In Unity, select Assets/Settings/InputActions.inputactions
-/// 2. In Inspector, check "Generate C# Class"
-/// 3. Set "Class Name" to "InputActions"
-/// 4. Click "Apply"
-/// 5. If compile errors occur, use the temporary Legacy Input version below
+/// Backward-compat: <see cref="CameraOffset"/> and <see cref="SetOffset"/> keep
+/// the same pixel-offset semantics they had pre-iso, so the existing search /
+/// coordinate-tracker UI keeps working. SetOffset now teleports the player
+/// (via <see cref="PlayerController.TeleportToTile"/>), and the camera catches
+/// up on the next frame's deadzone follow.
 /// </summary>
 public class CameraController : MonoBehaviour
 {
-    [Header("Movement Settings")]
-    [SerializeField] private float moveSpeed = 120f; // 120 pixels per second (2 pixels per frame @ 60fps)
-    [SerializeField] private float sprintMultiplier = 2.0f; // Speed multiplier when holding Shift
+    [Header("Follow Target")]
+    [SerializeField] private PlayerController target;
+    public PlayerController Target => target;
 
-    // Track camera offset in pixel coordinates (not Unity units)
-    private Vector2 cameraOffset = Vector2.zero;
-    public Vector2 CameraOffset => cameraOffset;
+    [Header("Deadzone")]
+    [Tooltip("Deadzone half-width as a fraction of the camera's on-screen half-width. Character roams this fraction of the screen (both sides) before the camera scrolls. Scales with zoom so it feels consistent at 0.5x/1x/2x.")]
+    [Range(0f, 0.9f)]
+    [SerializeField] private float deadzoneHalfWidthScreenFraction = 0.33f;
+    [Tooltip("Deadzone half-height as a fraction of the camera's on-screen half-height.")]
+    [Range(0f, 0.9f)]
+    [SerializeField] private float deadzoneHalfHeightScreenFraction = 0.33f;
 
-    // Unity Input System
-    private InputActions inputActions;
-    private UnityEngine.InputSystem.InputAction moveAction;
-    private UnityEngine.InputSystem.InputAction sprintAction;
+    [Header("Zoom")]
+    [Tooltip("Zoom multipliers in ascending order. Index 1 is the reference '1x' level; the camera's initial orthographicSize is treated as the 1x size.")]
+    [SerializeField] private float[] zoomLevels = { 0.5f, 1f, 2f };
+    [Tooltip("Which zoom level the camera boots up at. 0=0.5x, 1=1x, 2=2x.")]
+    [SerializeField] private int defaultZoomIndex = 1;
+
+    private const float CAMERA_Z = -10f;
+    private const float SCROLL_STEP_THRESHOLD = 0.5f;
+
+    private Camera cam;
+    private float baseOrthoSize;
+    private int currentZoomIndex;
+    private float scrollAccumulator;
+
+    /// <summary>Camera position expressed in pre-iso pixel units (Unity units × 16). Kept for UI back-compat.</summary>
+    public Vector2 CameraOffset => new Vector2(transform.position.x * 16f, transform.position.y * 16f);
 
     private void Awake()
     {
-        inputActions = new InputActions();
-        moveAction = inputActions.Player.Move;
-        sprintAction = inputActions.Player.Sprint;
+        cam = GetComponent<Camera>();
+        if (cam == null) cam = Camera.main;
+
+        // Whatever orthographicSize the Main Camera is configured with in the
+        // scene becomes the "1x" reference. All zoom levels are multipliers
+        // against this base.
+        baseOrthoSize = cam != null ? cam.orthographicSize : 5f;
+        currentZoomIndex = Mathf.Clamp(defaultZoomIndex, 0, zoomLevels.Length - 1);
+
+        if (target == null)
+        {
+            target = FindFirstObjectByType<PlayerController>();
+            if (target == null)
+            {
+                Debug.LogError("CameraController: no PlayerController target assigned and none found in the scene.");
+            }
+        }
     }
 
     private void Start()
     {
-        // Restore camera position from WorldManager if a world is loaded
         RestoreCameraPosition();
+        RestoreZoom();
+        ApplyZoom();
     }
 
-    private void OnEnable()
+    private void Update()
     {
-        moveAction.Enable();
-        sprintAction.Enable();
+        if (cam == null) return;
+
+        // Number-key jumps: 1/2/3 → index 0/1/2 (0.5x / 1x / 2x)
+        Keyboard kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.digit1Key.wasPressedThisFrame) SetZoomIndex(0);
+            else if (kb.digit2Key.wasPressedThisFrame) SetZoomIndex(1);
+            else if (kb.digit3Key.wasPressedThisFrame) SetZoomIndex(2);
+        }
+
+        // Mouse wheel: accumulate small deltas until we cross a threshold, then step.
+        // Standard scroll wheels emit ~1 unit per click; the threshold gives one
+        // zoom step per click without letting rapid trackpad flicks skip past a level.
+        Mouse mouse = Mouse.current;
+        if (mouse != null)
+        {
+            float scroll = mouse.scroll.y.ReadValue();
+            scrollAccumulator += scroll;
+            if (scrollAccumulator >  SCROLL_STEP_THRESHOLD)
+            {
+                SetZoomIndex(currentZoomIndex + 1);
+                scrollAccumulator = 0f;
+            }
+            else if (scrollAccumulator < -SCROLL_STEP_THRESHOLD)
+            {
+                SetZoomIndex(currentZoomIndex - 1);
+                scrollAccumulator = 0f;
+            }
+        }
+    }
+
+    private void SetZoomIndex(int index)
+    {
+        int clamped = Mathf.Clamp(index, 0, zoomLevels.Length - 1);
+        if (clamped == currentZoomIndex) return;
+        currentZoomIndex = clamped;
+        ApplyZoom();
+        SaveZoom();
+    }
+
+    private void ApplyZoom()
+    {
+        if (cam == null || zoomLevels == null || zoomLevels.Length == 0) return;
+        float zoom = zoomLevels[currentZoomIndex];
+        // Zoom > 1 = closer (smaller view), zoom < 1 = further (larger view).
+        cam.orthographicSize = baseOrthoSize / zoom;
     }
 
     private void OnDisable()
     {
-        moveAction.Disable();
-        sprintAction.Disable();
-
-        // Save camera position when disabled (scene transition or quit)
         SaveCameraPosition();
     }
 
     private void OnApplicationQuit()
     {
-        // Ensure camera position is saved on quit
         SaveCameraPosition();
-    }
-
-    /// <summary>
-    /// Restore camera position from the currently loaded world.
-    /// </summary>
-    private void RestoreCameraPosition()
-    {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
-        {
-            Vector2 savedPosition = WorldManager.Instance.CurrentWorld.lastCameraPosition;
-            SetOffset(savedPosition);
-        }
-    }
-
-    /// <summary>
-    /// Save current camera position to the loaded world.
-    /// </summary>
-    private void SaveCameraPosition()
-    {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
-        {
-            WorldManager.Instance.SaveCameraPosition(cameraOffset);
-        }
     }
 
     private void LateUpdate()
     {
-        // Read WASD input as Vector2
-        Vector2 movement = moveAction.ReadValue<Vector2>();
+        if (target == null || cam == null) return;
 
-        // Check if sprint is being held
-        bool isSprinting = sprintAction.IsPressed();
-        float currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
+        // Deadzone scales with camera zoom: the on-screen area the character
+        // roams in stays consistent at 0.5x / 1x / 2x zoom. At bigger orthoSize
+        // (zoomed out) the deadzone in world units grows; at smaller orthoSize
+        // (zoomed in) it shrinks.
+        float halfHeightUnits = cam.orthographicSize;
+        float halfWidthUnits  = halfHeightUnits * cam.aspect;
+        float dzHalfWidth  = halfWidthUnits  * deadzoneHalfWidthScreenFraction;
+        float dzHalfHeight = halfHeightUnits * deadzoneHalfHeightScreenFraction;
 
-        // Update offset in pixel coordinates
-        cameraOffset += movement * currentSpeed * Time.deltaTime;
+        Vector3 targetPos = target.transform.position;
+        Vector3 cameraPos = transform.position;
 
-        // Update camera position (convert pixels to Unity units: 16 pixels = 1 unit)
-        // No rounding - let Unity handle sub-pixel rendering for smooth movement
-        transform.position = new Vector3(
-            cameraOffset.x / 16f,
-            cameraOffset.y / 16f,
-            -10f // Camera Z position
-        );
+        float dx = targetPos.x - cameraPos.x;
+        float dy = targetPos.y - cameraPos.y;
+
+        if (dx >  dzHalfWidth)  cameraPos.x = targetPos.x - dzHalfWidth;
+        if (dx < -dzHalfWidth)  cameraPos.x = targetPos.x + dzHalfWidth;
+        if (dy >  dzHalfHeight) cameraPos.y = targetPos.y - dzHalfHeight;
+        if (dy < -dzHalfHeight) cameraPos.y = targetPos.y + dzHalfHeight;
+
+        transform.position = new Vector3(cameraPos.x, cameraPos.y, CAMERA_Z);
     }
 
     /// <summary>
-    /// Reset camera to origin (useful for testing).
+    /// Teleport to a specific pixel offset — used by the coordinate search UI.
+    /// Converts the target Unity position back to a tile, teleports the player
+    /// there, and snaps the camera on top so the deadzone follow doesn't have
+    /// to catch up.
     /// </summary>
+    public void SetOffset(Vector2 pixelOffset)
+    {
+        float unityX = pixelOffset.x / 16f;
+        float unityY = pixelOffset.y / 16f;
+
+        if (target != null)
+        {
+            Vector2 tile = IsoProjection.UnityToWorld(unityX, unityY);
+            target.TeleportToTile(tile.x, tile.y);
+        }
+
+        transform.position = new Vector3(unityX, unityY, CAMERA_Z);
+    }
+
     public void ResetToOrigin()
     {
-        cameraOffset = Vector2.zero;
-        transform.position = new Vector3(0, 0, -10f);
+        SetOffset(Vector2.zero);
     }
 
-    /// <summary>
-    /// Set camera to specific pixel offset.
-    /// </summary>
-    public void SetOffset(Vector2 newOffset)
+    private void RestoreCameraPosition()
     {
-        cameraOffset = newOffset;
-        transform.position = new Vector3(
-            cameraOffset.x / 16f,
-            cameraOffset.y / 16f,
-            -10f
-        );
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            SetOffset(WorldManager.Instance.CurrentWorld.lastCameraPosition);
+        }
+    }
+
+    private void SaveCameraPosition()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            WorldManager.Instance.SaveCameraPosition(CameraOffset);
+        }
+    }
+
+    private void RestoreZoom()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            int saved = WorldManager.Instance.CurrentWorld.lastZoomIndex;
+            // Guard against out-of-range saves (older worlds default to 0, which
+            // happens to be the 0.5x level — we still want 1x as the sensible
+            // default for worlds that predate zoom persistence).
+            if (saved < 0 || saved >= zoomLevels.Length) saved = defaultZoomIndex;
+            currentZoomIndex = saved;
+        }
+    }
+
+    private void SaveZoom()
+    {
+        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        {
+            WorldManager.Instance.SaveZoomIndex(currentZoomIndex);
+        }
     }
 }

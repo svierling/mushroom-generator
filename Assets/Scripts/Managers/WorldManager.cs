@@ -137,6 +137,19 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Save the current world's zoom level index.
+    /// </summary>
+    public void SaveZoomIndex(int index)
+    {
+        if (CurrentWorld != null)
+        {
+            CurrentWorld.lastZoomIndex = index;
+            CurrentWorld.SetLastPlayed(System.DateTime.UtcNow);
+            SaveDataToDisk();
+        }
+    }
+
+    /// <summary>
     /// Get all saved worlds, sorted by last played (most recent first).
     /// </summary>
     public List<WorldSaveData> GetAllWorlds()

@@ -33,6 +33,13 @@ public class WorldSaveData
     public string lastPlayedUtc;
 
     /// <summary>
+    /// Discrete zoom level index — indexes into CameraController.zoomLevels.
+    /// Worlds saved before zoom existed deserialize as 0 (0.5x); users can
+    /// bump back to 1x with the number keys and the save catches up.
+    /// </summary>
+    public int lastZoomIndex;
+
+    /// <summary>
     /// Get the last played time as DateTime.
     /// </summary>
     public DateTime GetLastPlayed()
@@ -60,7 +67,8 @@ public class WorldSaveData
             worldName = name,
             worldSeed = (uint)UnityEngine.Random.Range(1, int.MaxValue),
             lastCameraPosition = Vector2.zero,
-            lastPlayedUtc = DateTime.UtcNow.ToString("o")
+            lastPlayedUtc = DateTime.UtcNow.ToString("o"),
+            lastZoomIndex = 1
         };
     }
 }

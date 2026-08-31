@@ -24,18 +24,22 @@ This is a Unity project - all build operations use Unity Editor:
 ### Core Systems
 
 **Procedural Generation** (`Assets/Scripts/Core/` & `Assets/Scripts/Data/`):
+
 - `ProceduralRNG.cs` - 5-step hash-based RNG matching C++ implementation exactly. Uses magic constants `0xe120fc15`, `0x4a39b70d`, `0x12fad5c9`
 - `MushroomData.cs` - Mushroom struct with `Generate(uint x, uint y)` method. ~1.43% spawn rate, three types: Bolete (41.7%), Roundhead (50%), Chanterelle (16.7%)
 
 **Rendering** (`Assets/Scripts/Rendering/`):
+
 - `MushroomGenerator.cs` - Per-frame regeneration with object pooling. Constants: `SECTOR_SIZE_PIXELS = 16`, `PIXELS_PER_UNIT = 16`
 - `MushroomInstance.cs` - Individual renderer with Y-sorting: `sortingOrder = -position.y * 100f`
 
 **Controllers** (`Assets/Scripts/Controllers/`):
+
 - `CameraController.cs` - WASD movement at 120 pixels/second, 2x sprint multiplier (Shift)
 - `MouseInteractionController.cs` - Hover detection on 3x3 sector grid, click selection
 
 **UI** (`Assets/Scripts/UI/`):
+
 - `CoordinateSearchUI.cs` - Search by coordinates with Enter/Numpad Enter navigation
 - `CoordinateTrackerUI.cs` - Real-time sector coordinate display
 - `HighlightRectangle.cs` - Yellow border overlay (must compensate for Canvas scale factor)
@@ -63,3 +67,4 @@ This is a Unity project - all build operations use Unity Editor:
 - `ARCHITECTURE.md` - Detailed system architecture and data flow
 - `DEVELOPMENT.md` - Migration notes and troubleshooting guide
 - `DEPLOYMENT.md` - Build and release procedures
+- `ROADMAP.md` - Plans for the future (larger than bug fixes)
