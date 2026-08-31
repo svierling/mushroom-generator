@@ -28,7 +28,6 @@ public class MushroomGenerator : MonoBehaviour
     // Constants matching C++ implementation
     private const int SECTOR_SIZE_PIXELS = 16;  // 16x16 pixel sectors
     private const int PIXELS_PER_UNIT = 16;     // PPU setting for sprites
-    private const int SPRITE_OFFSET = -8;       // Centers 46px sprite in 16px sector
 
     private void Start()
     {
@@ -104,23 +103,14 @@ public class MushroomGenerator : MonoBehaviour
 
                 if (data.exists)
                 {
-                    // Calculate ABSOLUTE world position based on world sector coordinates
-                    // Each mushroom has a fixed position in the world that never changes
-                    // C++ draws at screen positions, but in Unity we use world positions
-                    float worldPixelX = (worldSectorX * SECTOR_SIZE_PIXELS) + SPRITE_OFFSET;
-                    float worldPixelY = (worldSectorY * SECTOR_SIZE_PIXELS) + SPRITE_OFFSET;
+                    // Mushroom sits on top of the terrain at this tile. Height is
+                    // 0 today via FlatTerrainProvider; the plumbing is here so
+                    // Phase 0.75 can drop in a heightmap without touching this loop.
+                    TerrainSample sample = TerrainService.SampleAt(worldSectorX, worldSectorY);
 
-                    // Convert to Unity world units (PPU = 16)
-                    Vector3 worldPos = new Vector3(
-                        worldPixelX / PIXELS_PER_UNIT,
-                        worldPixelY / PIXELS_PER_UNIT,
-                        0f
-                    );
-
-                    // Spawn from pool
                     MushroomInstance mushroom = GetFromPool();
                     Sprite sprite = spriteData.GetSprite(data.type);
-                    mushroom.Configure(worldPos, sprite);
+                    mushroom.Configure(worldSectorX, worldSectorY, sample.height, sprite);
                 }
             }
         }

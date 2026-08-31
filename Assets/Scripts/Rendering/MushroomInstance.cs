@@ -19,18 +19,14 @@ public class MushroomInstance : MonoBehaviour
     }
 
     /// <summary>
-    /// Configure the mushroom's position and sprite.
-    /// Called by MushroomGenerator when spawning from object pool.
+    /// Configure the mushroom at a world tile with a given sprite. The caller
+    /// supplies the raw tile coordinates + height; iso projection and depth
+    /// sorting happen here so the whole pool stays consistent.
     /// </summary>
-    /// <param name="position">World position to place the mushroom</param>
-    /// <param name="sprite">Sprite to display</param>
-    public void Configure(Vector3 position, Sprite sprite)
+    public void Configure(float worldTileX, float worldTileY, int height, Sprite sprite)
     {
-        transform.position = position;
+        transform.position = IsoProjection.WorldToUnity(worldTileX, worldTileY, height);
         spriteRenderer.sprite = sprite;
-
-        // Y-sorting: Lower Y positions render in front (appear closer)
-        // Multiply by 100 for sufficient granularity, negate so lower Y = higher priority
-        spriteRenderer.sortingOrder = Mathf.RoundToInt(-position.y * 100f);
+        spriteRenderer.sortingOrder = IsoProjection.SortOrder(worldTileX, worldTileY, height);
     }
 }
