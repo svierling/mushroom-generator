@@ -30,7 +30,7 @@ public class MushroomGenerator : MonoBehaviour
         // Pre-warm object pool to avoid mid-frame allocations
         for (int i = 0; i < poolInitialSize; i++)
         {
-            CreateNewMushroomInstance();
+            inactiveMushroomPool.Enqueue(InstantiateInactive());
         }
 
         if (mainCamera == null)
@@ -133,21 +133,18 @@ public class MushroomGenerator : MonoBehaviour
 
         if (inactiveMushroomPool.Count > 0)
         {
-            // Reuse from pool
             instance = inactiveMushroomPool.Dequeue();
-            instance.gameObject.SetActive(true);
         }
         else
         {
-            // Pool exhausted - create new instance
-            instance = CreateNewMushroomInstance();
-
+            instance = InstantiateInactive();
             if (showDebugInfo)
             {
                 Debug.LogWarning($"Object pool exhausted! Creating new instance. Consider increasing poolInitialSize. Current active: {activeMushroomPool.Count}");
             }
         }
 
+        instance.gameObject.SetActive(true);
         activeMushroomPool.Add(instance);
         return instance;
     }
@@ -166,10 +163,9 @@ public class MushroomGenerator : MonoBehaviour
         activeMushroomPool.Clear();
     }
 
-    /// <summary>
-    /// Create a new mushroom instance for the object pool.
-    /// </summary>
-    private MushroomInstance CreateNewMushroomInstance()
+    // Only used by Start()/GetFromPool. Returns a fresh instance that is neither
+    // pooled nor active — callers own the placement.
+    private MushroomInstance InstantiateInactive()
     {
         GameObject obj = Instantiate(mushroomPrefab, mushroomContainer);
         obj.SetActive(false);
@@ -180,7 +176,6 @@ public class MushroomGenerator : MonoBehaviour
             Debug.LogError("Mushroom prefab is missing MushroomInstance component!");
         }
 
-        inactiveMushroomPool.Enqueue(instance);
         return instance;
     }
 
