@@ -21,7 +21,12 @@ public static class IsoProjection
 
     // Multiplied into sortingOrder to break ties between tiles at the same
     // (x + y) so a raised tile draws in front of a flat tile behind it.
-    public const int HEIGHT_SORT_WEIGHT = 10;
+    public const int HEIGHT_SORT_WEIGHT = 1;
+
+    // Sprite sort spacing per iso diagonal step. Unity's Renderer.sortingOrder
+    // is Int16, so anything above 32767 or below -32768 clamps. Multiplier 10
+    // gives ±3200 tile-sum headroom before overflow — 32x the previous 100.
+    public const int SORT_ORDER_PER_DIAGONAL = 10;
 
     private const float TILE_HALF_WIDTH_UNITS  = (TILE_WIDTH_PIXELS  / 2f) / PIXELS_PER_UNIT;
     private const float TILE_HALF_HEIGHT_UNITS = (TILE_HEIGHT_PIXELS / 2f) / PIXELS_PER_UNIT;
@@ -74,6 +79,6 @@ public static class IsoProjection
     /// </summary>
     public static int SortOrder(float worldX, float worldY, float height = 0f)
     {
-        return -(int)((worldX + worldY) * 100f + height * HEIGHT_SORT_WEIGHT);
+        return -(int)((worldX + worldY) * SORT_ORDER_PER_DIAGONAL + height * HEIGHT_SORT_WEIGHT);
     }
 }

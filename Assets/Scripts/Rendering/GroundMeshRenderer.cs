@@ -23,8 +23,8 @@ public class GroundMeshRenderer : MonoBehaviour
     [SerializeField] private Color borderColor = new Color(0.26f, 0.58f, 0.17f, 1f);
 
     [Header("Layering")]
-    [Tooltip("Sorting order for the whole ground mesh. Set well below the smallest expected mushroom sort key so ground always draws behind.")]
-    [SerializeField] private int sortingOrder = -1_000_000;
+    [Tooltip("Sorting order for the whole ground mesh. Unity's Renderer.sortingOrder is Int16, so use its floor (-32768) — this guarantees the ground stays below any sprite whose sort key hasn't clamped.")]
+    [SerializeField] private int sortingOrder = short.MinValue;
 
     private const float VISIBILITY_MARGIN_UNITS = 2f;
 
