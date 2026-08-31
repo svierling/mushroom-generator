@@ -43,6 +43,14 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Color placeholderShadowColor = new Color(0.40f, 0.10f, 0.10f, 1f);
     [SerializeField] private Vector2Int placeholderSizePixels = new Vector2Int(24, 32);
 
+    [Header("Ground Shadow")]
+    [Tooltip("Draw an iso ellipse shadow under the character. Sits on the ground plane in the tile the character stands on, sorted just below the character sprite.")]
+    [SerializeField] private bool showShadow = true;
+    [Tooltip("Shadow color. Alpha < 1 lets the ground show through — 0.35 reads as a soft ground shadow.")]
+    [SerializeField] private Color shadowColor = new Color(0f, 0f, 0f, 0.35f);
+    [Tooltip("Shadow ellipse size in pixels. 2:1 width:height matches iso perspective.")]
+    [SerializeField] private Vector2Int shadowSizePixels = new Vector2Int(24, 12);
+
     private const int DIRECTION_COUNT = 8;
     // Facing indices — MUST match the row order in CHARACTER_SPRITESHEETS.md §4.
     private const int DIR_UP         = 0;
@@ -62,6 +70,7 @@ public class PlayerController : MonoBehaviour
     private Sprite[,] walkFrames;   // [direction, frame]
     private Sprite[,] sprintFrames;
     private Sprite fallbackSprite;
+    private SpriteRenderer shadowRenderer;
 
     private int currentDirection = DIR_DOWN;
     private float animAccumulator;
@@ -106,8 +115,19 @@ public class PlayerController : MonoBehaviour
             spriteRenderer.sprite = fallbackSprite;
         }
 
+        if (showShadow) CreateShadow();
+
         ApplyTransform();
         ApplyCurrentSprite(isSprinting: false);
+    }
+
+    private void CreateShadow()
+    {
+        GameObject shadow = new GameObject("Shadow");
+        shadow.transform.SetParent(transform, false);
+        shadow.transform.localPosition = Vector3.zero;
+        shadowRenderer = shadow.AddComponent<SpriteRenderer>();
+        shadowRenderer.sprite = BuildEllipseSprite(shadowColor, shadowSizePixels.x, shadowSizePixels.y);
     }
 
     private void Update()
@@ -162,7 +182,11 @@ public class PlayerController : MonoBehaviour
         // transform.position at the tile point drops the visible base onto the
         // tile. See MushroomInstance.Configure for the same convention.
         transform.position = IsoProjection.WorldToUnity(WorldTileX, WorldTileY, sample.height);
-        spriteRenderer.sortingOrder = IsoProjection.SortOrder(WorldTileX, WorldTileY, sample.height);
+        int sort = IsoProjection.SortOrder(WorldTileX, WorldTileY, sample.height);
+        spriteRenderer.sortingOrder = sort;
+        // Shadow sits at the same tile point (as a child at localPos zero) but
+        // sorts one below the character so the body draws on top.
+        if (shadowRenderer != null) shadowRenderer.sortingOrder = sort - 1;
     }
 
     private void ApplyCurrentSprite(bool isSprinting)
@@ -224,6 +248,46 @@ public class PlayerController : MonoBehaviour
         float angleDeg = Mathf.Atan2(input.y, input.x) * Mathf.Rad2Deg;
         int idx = Mathf.RoundToInt((90f - angleDeg) / 45f);
         return ((idx % DIRECTION_COUNT) + DIRECTION_COUNT) % DIRECTION_COUNT;
+    }
+
+    /// <summary>
+    /// Build a filled ellipse sprite with a 2:1 width:height ratio so it
+    /// matches iso perspective. Pivot at center — placed at the tile point,
+    /// the ellipse sits flat on the ground plane.
+    /// </summary>
+    private static Sprite BuildEllipseSprite(Color color, int w, int h)
+    {
+        Texture2D tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode   = TextureWrapMode.Clamp,
+        };
+
+        Color[] pixels = new Color[w * h];
+        Color transparent = new Color(0, 0, 0, 0);
+        float cx = (w - 1) * 0.5f;
+        float cy = (h - 1) * 0.5f;
+        float hx = w * 0.5f;
+        float hy = h * 0.5f;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                float dx = (x - cx) / hx;
+                float dy = (y - cy) / hy;
+                pixels[y * w + x] = (dx * dx + dy * dy) <= 1f ? color : transparent;
+            }
+        }
+        tex.SetPixels(pixels);
+        tex.Apply();
+
+        return Sprite.Create(
+            tex,
+            new Rect(0, 0, w, h),
+            new Vector2(0.5f, 0.5f),
+            IsoProjection.PIXELS_PER_UNIT,
+            0,
+            SpriteMeshType.FullRect);
     }
 
     /// <summary>
