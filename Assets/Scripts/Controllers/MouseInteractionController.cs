@@ -20,14 +20,17 @@ public class MouseInteractionController : MonoBehaviour
 
     private const int PIXELS_PER_UNIT = 16;
 
-    // Mushroom sprite dimensions (from MushroomRed.png: 46x53 pixels)
-    private const float SPRITE_WIDTH_PIXELS = 46f;
-    private const float SPRITE_HEIGHT_PIXELS = 53f;
+    // Mushroom sprite dimensions (60x60 with a 5-pixel bottom-transparent
+    // padding — the .meta pivot is set to the visible base at pixel y=5).
+    private const float SPRITE_WIDTH_PIXELS  = 60f;
+    private const float SPRITE_HEIGHT_PIXELS = 60f;
+    private const float SPRITE_PIVOT_Y_PIXELS = 5f;
     private const float SPRITE_HALF_WIDTH_UNITS  = SPRITE_WIDTH_PIXELS  * 0.5f / PIXELS_PER_UNIT;
     private const float SPRITE_HALF_HEIGHT_UNITS = SPRITE_HEIGHT_PIXELS * 0.5f / PIXELS_PER_UNIT;
-    // MushroomInstance shifts the sprite up by half its height so the base
-    // lands on the tile. Hit-testing must apply the same offset.
-    private const float MUSHROOM_BASE_OFFSET_UNITS = SPRITE_HEIGHT_PIXELS * 0.5f / PIXELS_PER_UNIT;
+    // Sprite pivot sits at the tile point (see MushroomInstance.Configure).
+    // The sprite CENTER for hit-testing is therefore (halfHeight - pivotY)
+    // above the tile.
+    private const float MUSHROOM_BASE_OFFSET_UNITS = (SPRITE_HEIGHT_PIXELS * 0.5f - SPRITE_PIVOT_Y_PIXELS) / PIXELS_PER_UNIT;
 
     // Maximum terrain height we'll ever try to pick against. Flat today, but
     // the walk-down loop is already the right shape for Phase 0.75.

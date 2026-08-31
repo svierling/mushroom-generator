@@ -106,14 +106,10 @@ public class PlayerController : MonoBehaviour
     {
         TerrainSample sample = TerrainService.SampleAt(Mathf.FloorToInt(WorldTileX), Mathf.FloorToInt(WorldTileY));
 
-        // Same base-offset trick as MushroomInstance: sprite pivot is center, but
-        // iso rendering wants the base at the tile point.
-        float baseOffset = spriteRenderer.sprite != null
-            ? spriteRenderer.sprite.rect.height * 0.5f / spriteRenderer.sprite.pixelsPerUnit
-            : 0f;
-
-        transform.position = IsoProjection.WorldToUnity(WorldTileX, WorldTileY, sample.height)
-                           + new Vector3(0f, baseOffset, 0f);
+        // Character sprite's pivot is authored at its visible base, so placing
+        // transform.position at the tile point drops the visible base onto the
+        // tile. See MushroomInstance.Configure for the same convention.
+        transform.position = IsoProjection.WorldToUnity(WorldTileX, WorldTileY, sample.height);
         spriteRenderer.sortingOrder = IsoProjection.SortOrder(WorldTileX, WorldTileY, sample.height);
     }
 
@@ -169,7 +165,7 @@ public class PlayerController : MonoBehaviour
         return Sprite.Create(
             tex,
             new Rect(0, 0, w, h),
-            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0f),   // bottom-center pivot → sprite base sits on the tile
             IsoProjection.PIXELS_PER_UNIT,
             0,
             SpriteMeshType.FullRect);

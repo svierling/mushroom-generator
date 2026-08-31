@@ -21,10 +21,18 @@ public class WorldSaveData
     public uint worldSeed;
 
     /// <summary>
-    /// Last camera position when the world was saved.
-    /// Used to restore view on load.
+    /// Legacy field: last camera Unity position × 16, saved before iso.
+    /// Still written on save for backward compat, but new code reads
+    /// <see cref="lastCharacterTile"/> when present.
     /// </summary>
     public Vector2 lastCameraPosition;
+
+    /// <summary>
+    /// Character's world tile position when the world was last saved.
+    /// Authoritative on load — the follow-camera derives its position from
+    /// this. Defaults to (0, 0) on worlds saved before this field existed.
+    /// </summary>
+    public Vector2 lastCharacterTile;
 
     /// <summary>
     /// Timestamp of when this world was last played.
@@ -67,6 +75,7 @@ public class WorldSaveData
             worldName = name,
             worldSeed = (uint)UnityEngine.Random.Range(1, int.MaxValue),
             lastCameraPosition = Vector2.zero,
+            lastCharacterTile = Vector2.zero,
             lastPlayedUtc = DateTime.UtcNow.ToString("o"),
             lastZoomIndex = 1
         };

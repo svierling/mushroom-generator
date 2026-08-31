@@ -137,6 +137,20 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Save the current world's character tile position — authoritative for
+    /// where the player is on load. See <see cref="WorldSaveData.lastCharacterTile"/>.
+    /// </summary>
+    public void SaveCharacterTile(Vector2 tile)
+    {
+        if (CurrentWorld != null)
+        {
+            CurrentWorld.lastCharacterTile = tile;
+            CurrentWorld.SetLastPlayed(System.DateTime.UtcNow);
+            SaveDataToDisk();
+        }
+    }
+
+    /// <summary>
     /// Save the current world's zoom level index.
     /// </summary>
     public void SaveZoomIndex(int index)
