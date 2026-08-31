@@ -29,26 +29,25 @@ Row 0 is the top row of the image (screen-up). See §4 for the exact row → dir
 
 Our iso projection is a 2:1 diamond (`IsoProjection.WorldToUnity`):
 `unityX = tileX − tileY`, `unityY = (tileX + tileY) / 2`. WASD input is
-**tile-relative** with **constant on-screen speed** (Solstice / early
-Ultima style): `D` walks along the +X tile axis, `W` walks along +Y.
-Cardinals map to iso-angle steps and diagonals map to screen cardinals,
-but the code rescales the movement each frame so both feel like they
-travel the same on-screen distance per second. Feet trace tile edges.
+**screen-relative** (Landstalker / iso-Zelda style): `W` = up on screen,
+`D` = right on screen. The character walks in any of 8 screen directions
+and cuts across the tile grid — feet don't trace tile edges. This trades
+strict grid-alignment for intuitive keyboard controls.
 
-**Draw the character facing these 8 directions in screen space** — the
-sprite rows correspond to on-screen facings, and the code picks the row
-by projecting the tile input through the iso transform.
+**Draw the character facing these 8 directions in screen space.** The
+sprite rows correspond directly to the input direction — the row is
+picked straight from the input angle.
 
-| # | Facing (screen) | On-screen motion | Which key(s) trigger this facing |
-|---|---|---|---|
-| 0 | Up | straight up | W + D (tile +X+Y) |
-| 1 | Up-Right | 45° up-right | D (tile +X) |
-| 2 | Right | straight right | S + D (tile +X−Y) |
-| 3 | Down-Right | 45° down-right | S (tile −Y) |
-| 4 | Down | straight down | S + A (tile −X−Y) |
-| 5 | Down-Left | 45° down-left | A (tile −X) |
-| 6 | Left | straight left | W + A (tile −X+Y) |
-| 7 | Up-Left | 45° up-left | W (tile +Y) |
+| # | Facing (screen) | Which key(s) trigger this facing |
+|---|---|---|
+| 0 | Up | W |
+| 1 | Up-Right | W + D |
+| 2 | Right | D |
+| 3 | Down-Right | S + D |
+| 4 | Down | S |
+| 5 | Down-Left | S + A |
+| 6 | Left | A |
+| 7 | Up-Left | W + A |
 
 ---
 

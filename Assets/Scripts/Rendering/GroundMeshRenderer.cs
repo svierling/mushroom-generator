@@ -4,9 +4,8 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Renders the whole ground grid as a single dynamic mesh — one MeshRenderer,
-/// two submeshes: filled diamonds for tile bodies, line-topology segments for
-/// tile borders. No textures, so there are no pixel-level aliasing artifacts
-/// at any zoom level.
+/// one submesh of filled diamond triangles. No textures, so there are no
+/// pixel-level aliasing artifacts at any zoom level.
 ///
 /// The AABB cache from the pooled implementation is preserved so the mesh only
 /// rebuilds when the visible tile set actually changes (character crosses a
@@ -19,8 +18,7 @@ public class GroundMeshRenderer : MonoBehaviour
     [SerializeField] private Camera mainCamera;
 
     [Header("Colors")]
-    [SerializeField] private Color fillColor   = new Color(0.30f, 0.65f, 0.20f, 1f);
-    [SerializeField] private Color borderColor = new Color(0.26f, 0.58f, 0.17f, 1f);
+    [SerializeField] private Color fillColor = new Color(0.30f, 0.65f, 0.20f, 1f);
 
     [Header("Layering")]
     [Tooltip("Sorting order for the whole ground mesh. Unity's Renderer.sortingOrder is Int16, so use its floor (-32768) — this guarantees the ground stays below any sprite whose sort key hasn't clamped.")]
@@ -32,16 +30,13 @@ public class GroundMeshRenderer : MonoBehaviour
     private MeshRenderer meshRenderer;
     private Mesh mesh;
     private Material fillMat;
-    private Material lineMat;
 
     private int lastMinTileX, lastMaxTileX, lastMinTileY, lastMaxTileY;
     private float lastOrthoSize;
     private bool hasCachedFrame;
 
     private readonly List<Vector3> vertexBuf   = new List<Vector3>(8192);
-    private readonly List<Color>   colorBuf    = new List<Color>(8192);
     private readonly List<int>     triangleBuf = new List<int>(12288);
-    private readonly List<int>     lineBuf     = new List<int>(16384);
 
     private void Awake()
     {
@@ -51,16 +46,12 @@ public class GroundMeshRenderer : MonoBehaviour
         mesh = new Mesh { name = "GroundMesh" };
         mesh.MarkDynamic();
         mesh.indexFormat = IndexFormat.UInt32;
-        mesh.subMeshCount = 2;
         meshFilter.sharedMesh = mesh;
 
-        // Sprites/Default multiplies vertex color × texture. With no texture set
-        // the shader falls through to vertex color, so we don't need a shader
-        // switch to get solid colored geometry.
-        Shader shader = Shader.Find("Sprites/Default");
-        fillMat = new Material(shader);
-        lineMat = new Material(shader);
-        meshRenderer.sharedMaterials = new[] { fillMat, lineMat };
+        // Sprites/Default falls through to the material color when no texture
+        // is set, so no shader switch is needed for solid-colored geometry.
+        fillMat = new Material(Shader.Find("Sprites/Default"));
+        meshRenderer.sharedMaterial = fillMat;
         meshRenderer.sortingOrder = sortingOrder;
 
         if (mainCamera == null) mainCamera = Camera.main;
@@ -121,18 +112,11 @@ public class GroundMeshRenderer : MonoBehaviour
                              float minUnityX, float maxUnityX, float minUnityY, float maxUnityY)
     {
         vertexBuf.Clear();
-        colorBuf.Clear();
         triangleBuf.Clear();
-        lineBuf.Clear();
 
         float halfW = IsoProjection.TILE_WIDTH_PIXELS  * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 1.0
         float halfH = IsoProjection.TILE_HEIGHT_PIXELS * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 0.5
 
-        // Each tile emits 4 verts arranged as top/right/bottom/left of the
-        // diamond, two triangles for the fill, and four line-segment indices
-        // tracing the outline. Adjacent tiles duplicate shared edges (drawn
-        // twice), which is cheap and avoids the bookkeeping of a shared vertex
-        // pool.
         for (int worldX = minTileX; worldX <= maxTileX; worldX++)
         {
             for (int worldY = minTileY; worldY <= maxTileY; worldY++)
@@ -146,41 +130,21 @@ public class GroundMeshRenderer : MonoBehaviour
                 }
 
                 int v0 = vertexBuf.Count;
+                vertexBuf.Add(new Vector3(center.x,         center.y + halfH, 0f));
+                vertexBuf.Add(new Vector3(center.x + halfW, center.y,         0f));
+                vertexBuf.Add(new Vector3(center.x,         center.y - halfH, 0f));
+                vertexBuf.Add(new Vector3(center.x - halfW, center.y,         0f));
 
-                Vector3 top    = new Vector3(center.x,         center.y + halfH, 0f);
-                Vector3 right  = new Vector3(center.x + halfW, center.y,         0f);
-                Vector3 bottom = new Vector3(center.x,         center.y - halfH, 0f);
-                Vector3 left   = new Vector3(center.x - halfW, center.y,         0f);
-
-                // Verts are white; each submesh's material tint drives its color.
-                vertexBuf.Add(top);    colorBuf.Add(Color.white);
-                vertexBuf.Add(right);  colorBuf.Add(Color.white);
-                vertexBuf.Add(bottom); colorBuf.Add(Color.white);
-                vertexBuf.Add(left);   colorBuf.Add(Color.white);
-
-                // Fill: two triangles covering the diamond.
-                triangleBuf.Add(v0);     triangleBuf.Add(v0 + 1); triangleBuf.Add(v0 + 2);
-                triangleBuf.Add(v0);     triangleBuf.Add(v0 + 2); triangleBuf.Add(v0 + 3);
-
-                // Border: four line segments tracing the outline.
-                lineBuf.Add(v0);     lineBuf.Add(v0 + 1);
-                lineBuf.Add(v0 + 1); lineBuf.Add(v0 + 2);
-                lineBuf.Add(v0 + 2); lineBuf.Add(v0 + 3);
-                lineBuf.Add(v0 + 3); lineBuf.Add(v0);
+                triangleBuf.Add(v0); triangleBuf.Add(v0 + 1); triangleBuf.Add(v0 + 2);
+                triangleBuf.Add(v0); triangleBuf.Add(v0 + 2); triangleBuf.Add(v0 + 3);
             }
         }
 
-        // Sprites/Default multiplies vertex × material color; verts are white
-        // so each submesh renders at its material's tint.
         fillMat.color = fillColor;
-        lineMat.color = borderColor;
 
         mesh.Clear();
         mesh.SetVertices(vertexBuf);
-        mesh.SetColors(colorBuf);
-        mesh.subMeshCount = 2;
         mesh.SetTriangles(triangleBuf, submesh: 0);
-        mesh.SetIndices(lineBuf.ToArray(), MeshTopology.Lines, submesh: 1);
         mesh.RecalculateBounds();
     }
 }

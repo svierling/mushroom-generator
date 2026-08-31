@@ -21,8 +21,8 @@ using UnityEngine.InputSystem;
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    [Tooltip("On-screen movement speed in Unity units per second. Input is TILE-relative (grid-aligned): W walks +Y (up-left on screen), D walks +X (up-right on screen), W+D walks the tile diagonal (straight up on screen). Speed is scaled so the character moves at a constant on-screen pace regardless of direction. Solstice / early Ultima style — feet trace tile edges.")]
-    [SerializeField] private float moveSpeedUnitsPerSecond = 6f;
+    [Tooltip("On-screen movement speed in Unity units per second. Input is screen-relative: W = up on screen, D = right on screen. Character walks in any of 8 screen directions; iso projection is applied only to the resulting tile-space position. Landstalker / iso-Zelda style — intuitive WASD; the character cuts across the tile grid rather than tracing edges.")]
+    [SerializeField] private float moveSpeedUnitsPerSecond = 7.5f;
     [SerializeField] private float sprintMultiplier = 2f;
 
     [Header("Spritesheets (see CHARACTER_SPRITESHEETS.md)")]
@@ -130,24 +130,15 @@ public class PlayerController : MonoBehaviour
             animAccumulator = 0f;
         }
 
-        // Tile-relative: input.x drives +X tile axis, input.y drives +Y. Then
-        // rescale the tile delta so its ON-SCREEN magnitude matches the desired
-        // moveSpeed each frame — cardinals and diagonals both move at the same
-        // visual pace, even though their tile-space magnitudes differ.
+        // Screen-relative: input.x/y drive on-screen delta. Un-project through
+        // the iso transform to get the equivalent tile-space delta.
+        // WorldToUnity: unityX = (tileX - tileY), unityY = (tileX + tileY) * 0.5
+        // Inverse:      tileX = unityX * 0.5 + unityY, tileY = unityY - unityX * 0.5
         float speed = moveSpeedUnitsPerSecond * (isSprinting ? sprintMultiplier : 1f);
-        if (isMoving)
-        {
-            // Screen delta a single input-unit of tile input would produce.
-            float screenDx = input.x - input.y;
-            float screenDy = (input.x + input.y) * 0.5f;
-            float screenMag = Mathf.Sqrt(screenDx * screenDx + screenDy * screenDy);
-            if (screenMag > 0.0001f)
-            {
-                float scale = speed * Time.deltaTime / screenMag;
-                WorldTileX += input.x * scale;
-                WorldTileY += input.y * scale;
-            }
-        }
+        float deltaUnityX = input.x * speed * Time.deltaTime;
+        float deltaUnityY = input.y * speed * Time.deltaTime;
+        WorldTileX += deltaUnityX * 0.5f + deltaUnityY;
+        WorldTileY += deltaUnityY - deltaUnityX * 0.5f;
 
         ApplyTransform();
         ApplyCurrentSprite(isSprinting);
@@ -225,15 +216,12 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// Map a tile-space input vector to one of 8 screen-space facing indices.
-    /// The character faces where the player sees them going, so we project the
-    /// tile input through the iso transform first, then pick the sprite row.
+    /// Map a screen-space input vector to one of 8 screen-space facing indices.
+    /// Input is screen-relative, so the input angle directly picks the row.
     /// </summary>
     private static int DirectionFromInput(Vector2 input)
     {
-        float screenX = input.x - input.y;
-        float screenY = (input.x + input.y) * 0.5f;
-        float angleDeg = Mathf.Atan2(screenY, screenX) * Mathf.Rad2Deg;
+        float angleDeg = Mathf.Atan2(input.y, input.x) * Mathf.Rad2Deg;
         int idx = Mathf.RoundToInt((90f - angleDeg) / 45f);
         return ((idx % DIRECTION_COUNT) + DIRECTION_COUNT) % DIRECTION_COUNT;
     }
