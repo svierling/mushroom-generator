@@ -25,10 +25,6 @@ public class MushroomGenerator : MonoBehaviour
     private List<MushroomInstance> activeMushroomPool = new List<MushroomInstance>();
     private Queue<MushroomInstance> inactiveMushroomPool = new Queue<MushroomInstance>();
 
-    // Constants matching C++ implementation
-    private const int SECTOR_SIZE_PIXELS = 16;  // 16x16 pixel sectors
-    private const int PIXELS_PER_UNIT = 16;     // PPU setting for sprites
-
     private void Start()
     {
         // Pre-warm object pool to avoid mid-frame allocations
@@ -58,95 +54,73 @@ public class MushroomGenerator : MonoBehaviour
         }
     }
 
+    // Sprite half-size used to pad the visible region so mushrooms whose center
+    // sits just outside the camera rect but whose sprite still peeks in don't
+    // pop out at the edges.
+    private const float VISIBILITY_MARGIN_UNITS = 2f;
+
     private void Update()
     {
-        // Calculate visible sectors based on camera viewport
-        int visibleSectorsX = CalculateVisibleSectorsX();
-        int visibleSectorsY = CalculateVisibleSectorsY();
-
-        // Calculate camera view area in sector coordinates
         Vector3 cameraPos = mainCamera.transform.position;
-        float halfWidthPixels = (mainCamera.orthographicSize * mainCamera.aspect) * PIXELS_PER_UNIT;
-        float halfHeightPixels = mainCamera.orthographicSize * PIXELS_PER_UNIT;
+        float halfWidthUnits = mainCamera.orthographicSize * mainCamera.aspect;
+        float halfHeightUnits = mainCamera.orthographicSize;
 
-        float topLeftPixelX = (cameraPos.x * PIXELS_PER_UNIT) - halfWidthPixels;
-        float topLeftPixelY = (cameraPos.y * PIXELS_PER_UNIT) - halfHeightPixels;
+        float minUnityX = cameraPos.x - halfWidthUnits - VISIBILITY_MARGIN_UNITS;
+        float maxUnityX = cameraPos.x + halfWidthUnits + VISIBILITY_MARGIN_UNITS;
+        float minUnityY = cameraPos.y - halfHeightUnits - VISIBILITY_MARGIN_UNITS;
+        float maxUnityY = cameraPos.y + halfHeightUnits + VISIBILITY_MARGIN_UNITS;
 
-        int sectorOffsetX = Mathf.FloorToInt(topLeftPixelX / SECTOR_SIZE_PIXELS);
-        int sectorOffsetY = Mathf.FloorToInt(topLeftPixelY / SECTOR_SIZE_PIXELS);
+        // The camera rectangle back-projects to a diamond in tile space.
+        // The AABB of that diamond is the smallest rectangle of tiles we need
+        // to consider; we then reject tiles whose iso projection falls outside
+        // the camera rect. Corners map like this:
+        //   worldX peaks at the top-right camera corner (max unityX + max unityY)
+        //   worldY peaks at the top-left camera corner (min unityX + max unityY)
+        Vector2 tlTile = IsoProjection.UnityToWorld(minUnityX, maxUnityY);
+        Vector2 trTile = IsoProjection.UnityToWorld(maxUnityX, maxUnityY);
+        Vector2 blTile = IsoProjection.UnityToWorld(minUnityX, minUnityY);
+        Vector2 brTile = IsoProjection.UnityToWorld(maxUnityX, minUnityY);
 
-        // Return all active mushrooms to pool
+        int minTileX = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.x, trTile.x), Mathf.Min(blTile.x, brTile.x)));
+        int maxTileX = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.x, trTile.x), Mathf.Max(blTile.x, brTile.x)));
+        int minTileY = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.y, trTile.y), Mathf.Min(blTile.y, brTile.y)));
+        int maxTileY = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.y, trTile.y), Mathf.Max(blTile.y, brTile.y)));
+
         ReturnAllToPool();
 
-        // Debug output
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
-            Debug.Log($"Visible sectors: {visibleSectorsX}x{visibleSectorsY} | " +
-                      $"Sector offset: ({sectorOffsetX}, {sectorOffsetY}) | " +
-                      $"Camera pos: {cameraPos}");
+            int span = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+            Debug.Log($"Tile AABB: X[{minTileX},{maxTileX}] Y[{minTileY},{maxTileY}] = {span} tiles | Camera pos: {cameraPos}");
         }
 
-        // Generate for each visible sector (EXACT C++ match)
-        // This replicates the C++ OnUserUpdate loop at lines 148-196
-        for (int screenX = 0; screenX < visibleSectorsX; screenX++)
+        for (int worldSectorX = minTileX; worldSectorX <= maxTileX; worldSectorX++)
         {
-            for (int screenY = 0; screenY < visibleSectorsY; screenY++)
+            for (int worldSectorY = minTileY; worldSectorY <= maxTileY; worldSectorY++)
             {
-                // Calculate world sector coordinates
-                // Keep as signed integers to properly handle negative coordinates
-                int worldSectorX = sectorOffsetX + screenX;
-                int worldSectorY = sectorOffsetY + screenY;
-
-                // Generate mushroom deterministically
-                // Cast to uint only when passing to Generate (matches C++ seed calculation)
-                MushroomData data = MushroomData.Generate((uint)worldSectorX, (uint)worldSectorY);
-
-                if (data.exists)
+                // Cheap iso-visibility test: project the tile and reject if
+                // the projection falls outside the padded camera rect.
+                TerrainSample sample = TerrainService.SampleAt(worldSectorX, worldSectorY);
+                Vector3 unityPos = IsoProjection.WorldToUnity(worldSectorX, worldSectorY, sample.height);
+                if (unityPos.x < minUnityX || unityPos.x > maxUnityX ||
+                    unityPos.y < minUnityY || unityPos.y > maxUnityY)
                 {
-                    // Mushroom sits on top of the terrain at this tile. Height is
-                    // 0 today via FlatTerrainProvider; the plumbing is here so
-                    // Phase 0.75 can drop in a heightmap without touching this loop.
-                    TerrainSample sample = TerrainService.SampleAt(worldSectorX, worldSectorY);
-
-                    MushroomInstance mushroom = GetFromPool();
-                    Sprite sprite = spriteData.GetSprite(data.type);
-                    mushroom.Configure(worldSectorX, worldSectorY, sample.height, sprite);
+                    continue;
                 }
+
+                MushroomData data = MushroomData.Generate((uint)worldSectorX, (uint)worldSectorY);
+                if (!data.exists) continue;
+
+                MushroomInstance mushroom = GetFromPool();
+                Sprite sprite = spriteData.GetSprite(data.type);
+                mushroom.Configure(worldSectorX, worldSectorY, sample.height, sprite);
             }
         }
 
-        // Debug: Show active mushroom count
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
             Debug.Log($"Active mushrooms: {activeMushroomPool.Count} | Pool size: {inactiveMushroomPool.Count}");
         }
-    }
-
-    /// <summary>
-    /// Calculate number of visible sectors horizontally based on camera viewport.
-    /// Matches C++ calculation: nSectorsX = ScreenWidth() / 16
-    /// </summary>
-    private int CalculateVisibleSectorsX()
-    {
-        // Camera orthographic size is half-height in world units
-        // Visible width = 2 * orthographicSize * aspect ratio
-        float visibleWidthUnits = mainCamera.orthographicSize * 2f * mainCamera.aspect;
-        float visibleWidthPixels = visibleWidthUnits * PIXELS_PER_UNIT;
-        // Add 2 extra sectors to handle partial sectors and movement
-        return Mathf.CeilToInt(visibleWidthPixels / SECTOR_SIZE_PIXELS) + 2;
-    }
-
-    /// <summary>
-    /// Calculate number of visible sectors vertically based on camera viewport.
-    /// Matches C++ calculation: nSectorsY = ScreenHeight() / 16
-    /// </summary>
-    private int CalculateVisibleSectorsY()
-    {
-        // Visible height = 2 * orthographicSize
-        float visibleHeightUnits = mainCamera.orthographicSize * 2f;
-        float visibleHeightPixels = visibleHeightUnits * PIXELS_PER_UNIT;
-        // Add 2 extra sectors to handle partial sectors and movement
-        return Mathf.CeilToInt(visibleHeightPixels / SECTOR_SIZE_PIXELS) + 2;
     }
 
     /// <summary>
@@ -229,18 +203,17 @@ public class MushroomGenerator : MonoBehaviour
             new Vector3(halfWidth * 2f, halfHeight * 2f, 0)
         );
 
-        // Draw sector grid (only show a small area around camera)
+        // Draw iso tile centers around the camera
         Gizmos.color = Color.cyan * 0.3f;
-        int gridSize = 10;
-        int cameraSectorX = Mathf.FloorToInt(cameraPos.x);
-        int cameraSectorY = Mathf.FloorToInt(cameraPos.y);
-
-        for (int x = cameraSectorX - gridSize; x < cameraSectorX + gridSize; x++)
+        Vector2 centerTile = IsoProjection.UnityToWorld(cameraPos.x, cameraPos.y);
+        int centerTileX = Mathf.RoundToInt(centerTile.x);
+        int centerTileY = Mathf.RoundToInt(centerTile.y);
+        const int gridSize = 10;
+        for (int x = centerTileX - gridSize; x < centerTileX + gridSize; x++)
         {
-            for (int y = cameraSectorY - gridSize; y < cameraSectorY + gridSize; y++)
+            for (int y = centerTileY - gridSize; y < centerTileY + gridSize; y++)
             {
-                Vector3 sectorPos = new Vector3(x, y, 0);
-                Gizmos.DrawWireCube(sectorPos, Vector3.one);
+                Gizmos.DrawWireSphere(IsoProjection.WorldToUnity(x, y), 0.1f);
             }
         }
     }
