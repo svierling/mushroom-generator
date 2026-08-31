@@ -18,18 +18,24 @@ public class CameraController : MonoBehaviour
     [SerializeField] private PlayerController target;
 
     [Header("Deadzone")]
-    [Tooltip("Half-width of the deadzone rectangle in Unity units. Character can roam within +/- this from camera center without the camera moving.")]
-    [SerializeField] private float deadzoneHalfWidthUnits = 4f;
-    [Tooltip("Half-height of the deadzone rectangle in Unity units.")]
-    [SerializeField] private float deadzoneHalfHeightUnits = 2f;
+    [Tooltip("Deadzone half-width as a fraction of the camera's on-screen half-width. Character roams this fraction of the screen (both sides) before the camera scrolls. Scales with zoom so it feels consistent at 0.5x/1x/2x.")]
+    [Range(0f, 0.9f)]
+    [SerializeField] private float deadzoneHalfWidthScreenFraction = 0.33f;
+    [Tooltip("Deadzone half-height as a fraction of the camera's on-screen half-height.")]
+    [Range(0f, 0.9f)]
+    [SerializeField] private float deadzoneHalfHeightScreenFraction = 0.33f;
 
     private const float CAMERA_Z = -10f;
+    private Camera cam;
 
     /// <summary>Camera position expressed in pre-iso pixel units (Unity units × 16). Kept for UI back-compat.</summary>
     public Vector2 CameraOffset => new Vector2(transform.position.x * 16f, transform.position.y * 16f);
 
     private void Awake()
     {
+        cam = GetComponent<Camera>();
+        if (cam == null) cam = Camera.main;
+
         if (target == null)
         {
             target = FindFirstObjectByType<PlayerController>();
@@ -57,7 +63,16 @@ public class CameraController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (target == null) return;
+        if (target == null || cam == null) return;
+
+        // Deadzone scales with camera zoom: the on-screen area the character
+        // roams in stays consistent at 0.5x / 1x / 2x zoom. At bigger orthoSize
+        // (zoomed out) the deadzone in world units grows; at smaller orthoSize
+        // (zoomed in) it shrinks.
+        float halfHeightUnits = cam.orthographicSize;
+        float halfWidthUnits  = halfHeightUnits * cam.aspect;
+        float dzHalfWidth  = halfWidthUnits  * deadzoneHalfWidthScreenFraction;
+        float dzHalfHeight = halfHeightUnits * deadzoneHalfHeightScreenFraction;
 
         Vector3 targetPos = target.transform.position;
         Vector3 cameraPos = transform.position;
@@ -65,10 +80,10 @@ public class CameraController : MonoBehaviour
         float dx = targetPos.x - cameraPos.x;
         float dy = targetPos.y - cameraPos.y;
 
-        if (dx >  deadzoneHalfWidthUnits)  cameraPos.x = targetPos.x - deadzoneHalfWidthUnits;
-        if (dx < -deadzoneHalfWidthUnits)  cameraPos.x = targetPos.x + deadzoneHalfWidthUnits;
-        if (dy >  deadzoneHalfHeightUnits) cameraPos.y = targetPos.y - deadzoneHalfHeightUnits;
-        if (dy < -deadzoneHalfHeightUnits) cameraPos.y = targetPos.y + deadzoneHalfHeightUnits;
+        if (dx >  dzHalfWidth)  cameraPos.x = targetPos.x - dzHalfWidth;
+        if (dx < -dzHalfWidth)  cameraPos.x = targetPos.x + dzHalfWidth;
+        if (dy >  dzHalfHeight) cameraPos.y = targetPos.y - dzHalfHeight;
+        if (dy < -dzHalfHeight) cameraPos.y = targetPos.y + dzHalfHeight;
 
         transform.position = new Vector3(cameraPos.x, cameraPos.y, CAMERA_Z);
     }
