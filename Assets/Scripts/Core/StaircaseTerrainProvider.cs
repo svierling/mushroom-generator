@@ -14,4 +14,10 @@ public sealed class StaircaseTerrainProvider : ITerrainProvider
         int height = System.Math.Max(0, worldX / 4);
         return new TerrainSample(height, SlopeType.Flat);
     }
+
+    // Big enough to cover any staircase the player is likely to walk during a
+    // smoke test. Height grows unbounded with X in this provider, but the
+    // AABB widening only needs to cover the range of heights currently in
+    // frame — a generous cap here keeps the renderer honest.
+    public int MaxHeight => 200;
 }

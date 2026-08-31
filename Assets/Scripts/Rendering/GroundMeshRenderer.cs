@@ -79,15 +79,28 @@ public class GroundMeshRenderer : MonoBehaviour
         float minUnityY = cameraPos.y - halfHeightUnits - VISIBILITY_MARGIN_UNITS;
         float maxUnityY = cameraPos.y + halfHeightUnits + VISIBILITY_MARGIN_UNITS;
 
-        Vector2 tlTile = IsoProjection.UnityToWorld(minUnityX, maxUnityY);
-        Vector2 trTile = IsoProjection.UnityToWorld(maxUnityX, maxUnityY);
-        Vector2 blTile = IsoProjection.UnityToWorld(minUnityX, minUnityY);
-        Vector2 brTile = IsoProjection.UnityToWorld(maxUnityX, minUnityY);
+        // Raised tiles shift up on screen by (height * HEIGHT_STEP_PIXELS/PPU),
+        // so tiles whose world-tile coords fall OUTSIDE the h=0 back-projection
+        // can still project INSIDE the camera view when they carry height. Take
+        // the union of back-projections at h=0 and h=MaxHeight to cover both.
+        int maxH = TerrainService.Provider.MaxHeight;
+        Vector2 tl0 = IsoProjection.UnityToWorld(minUnityX, maxUnityY, 0);
+        Vector2 tr0 = IsoProjection.UnityToWorld(maxUnityX, maxUnityY, 0);
+        Vector2 bl0 = IsoProjection.UnityToWorld(minUnityX, minUnityY, 0);
+        Vector2 br0 = IsoProjection.UnityToWorld(maxUnityX, minUnityY, 0);
+        Vector2 tlH = IsoProjection.UnityToWorld(minUnityX, maxUnityY, maxH);
+        Vector2 trH = IsoProjection.UnityToWorld(maxUnityX, maxUnityY, maxH);
+        Vector2 blH = IsoProjection.UnityToWorld(minUnityX, minUnityY, maxH);
+        Vector2 brH = IsoProjection.UnityToWorld(maxUnityX, minUnityY, maxH);
 
-        int minTileX = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.x, trTile.x), Mathf.Min(blTile.x, brTile.x)));
-        int maxTileX = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.x, trTile.x), Mathf.Max(blTile.x, brTile.x)));
-        int minTileY = Mathf.FloorToInt(Mathf.Min(Mathf.Min(tlTile.y, trTile.y), Mathf.Min(blTile.y, brTile.y)));
-        int maxTileY = Mathf.CeilToInt(Mathf.Max(Mathf.Max(tlTile.y, trTile.y), Mathf.Max(blTile.y, brTile.y)));
+        int minTileX = Mathf.FloorToInt(Mathf.Min(Mathf.Min(Mathf.Min(tl0.x, tr0.x), Mathf.Min(bl0.x, br0.x)),
+                                                  Mathf.Min(Mathf.Min(tlH.x, trH.x), Mathf.Min(blH.x, brH.x))));
+        int maxTileX = Mathf.CeilToInt(Mathf.Max(Mathf.Max(Mathf.Max(tl0.x, tr0.x), Mathf.Max(bl0.x, br0.x)),
+                                                 Mathf.Max(Mathf.Max(tlH.x, trH.x), Mathf.Max(blH.x, brH.x))));
+        int minTileY = Mathf.FloorToInt(Mathf.Min(Mathf.Min(Mathf.Min(tl0.y, tr0.y), Mathf.Min(bl0.y, br0.y)),
+                                                  Mathf.Min(Mathf.Min(tlH.y, trH.y), Mathf.Min(blH.y, brH.y))));
+        int maxTileY = Mathf.CeilToInt(Mathf.Max(Mathf.Max(Mathf.Max(tl0.y, tr0.y), Mathf.Max(bl0.y, br0.y)),
+                                                 Mathf.Max(Mathf.Max(tlH.y, trH.y), Mathf.Max(blH.y, brH.y))));
 
         if (hasCachedFrame &&
             minTileX == lastMinTileX && maxTileX == lastMaxTileX &&

@@ -6,4 +6,5 @@
 public sealed class FlatTerrainProvider : ITerrainProvider
 {
     public TerrainSample SampleAt(int worldX, int worldY) => TerrainSample.Flat;
+    public int MaxHeight => 0;
 }
