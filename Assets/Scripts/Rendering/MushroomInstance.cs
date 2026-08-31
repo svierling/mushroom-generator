@@ -25,11 +25,10 @@ public class MushroomInstance : MonoBehaviour
     /// </summary>
     public void Configure(float worldTileX, float worldTileY, int height, Sprite sprite)
     {
-        // Sprite pivot is center; iso wants the base of a standing sprite at the
-        // tile point so the mushroom looks like it's standing on the tile rather
-        // than sunk halfway into it. Shift up by half the sprite height.
-        float baseOffset = sprite.rect.height * 0.5f / sprite.pixelsPerUnit;
-        transform.position = IsoProjection.WorldToUnity(worldTileX, worldTileY, height) + new Vector3(0f, baseOffset, 0f);
+        // The sprite's pivot is authored to sit at the visible base of the
+        // mushroom, so placing transform.position at the tile point drops the
+        // pivot — and therefore the visible base — right onto the tile center.
+        transform.position = IsoProjection.WorldToUnity(worldTileX, worldTileY, height);
         spriteRenderer.sprite = sprite;
         spriteRenderer.sortingOrder = IsoProjection.SortOrder(worldTileX, worldTileY, height);
     }

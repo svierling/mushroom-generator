@@ -187,18 +187,45 @@ public class CameraController : MonoBehaviour
 
     private void RestoreCameraPosition()
     {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        if (WorldManager.Instance == null || !WorldManager.Instance.HasActiveWorld) return;
+
+        WorldSaveData world = WorldManager.Instance.CurrentWorld;
+
+        // Prefer the character tile (authoritative). Fall back to the legacy
+        // pixel-offset field for worlds saved before iso. Both defaulting to
+        // (0, 0) means "start at origin", which is correct on fresh worlds too.
+        if (world.lastCharacterTile != Vector2.zero && target != null)
         {
-            SetOffset(WorldManager.Instance.CurrentWorld.lastCameraPosition);
+            target.TeleportToTile(world.lastCharacterTile.x, world.lastCharacterTile.y);
+            SnapCameraToTarget();
+        }
+        else
+        {
+            SetOffset(world.lastCameraPosition);
         }
     }
 
     private void SaveCameraPosition()
     {
-        if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
+        if (WorldManager.Instance == null || !WorldManager.Instance.HasActiveWorld) return;
+
+        WorldSaveData world = WorldManager.Instance.CurrentWorld;
+
+        // Character tile is the authoritative source of truth on load; the
+        // legacy pixel-offset field is still populated for backward compat.
+        // Setting the field directly means both writes flush in one disk hit.
+        if (target != null)
         {
-            WorldManager.Instance.SaveCameraPosition(CameraOffset);
+            world.lastCharacterTile = new Vector2(target.WorldTileX, target.WorldTileY);
         }
+        WorldManager.Instance.SaveCameraPosition(CameraOffset);
+    }
+
+    private void SnapCameraToTarget()
+    {
+        if (target == null) return;
+        Vector3 t = target.transform.position;
+        transform.position = new Vector3(t.x, t.y, CAMERA_Z);
     }
 
     private void RestoreZoom()
