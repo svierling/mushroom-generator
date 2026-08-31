@@ -191,20 +191,15 @@ public class CoordinateSearchUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Move camera to the specified sector coordinates.
+    /// Teleport the character to the given world tile. The follow-camera
+    /// snaps on top via the deadzone-follow next frame.
     /// </summary>
-    private void NavigateToCoordinates(int sectorX, int sectorY)
+    private void NavigateToCoordinates(int tileX, int tileY)
     {
-        if (cameraController == null)
+        if (cameraController == null || cameraController.Target == null)
             return;
 
-        // Convert sector coordinates to pixel offset
-        // CameraController uses pixel coordinates (16 pixels = 1 world unit)
-        // To center camera at sector (x, y), camera offset = (x, y) * 16
-        Vector2 pixelOffset = new Vector2(sectorX * 16f, sectorY * 16f);
-
-        // Set camera offset to navigate to this position
-        cameraController.SetOffset(pixelOffset);
+        cameraController.Target.TeleportToTile(tileX, tileY);
 
         // Flash coordinate tracker green to indicate successful navigation
         if (coordinateTracker != null)

@@ -21,7 +21,6 @@ public class CoordinateTrackerUI : MonoBehaviour
     [SerializeField] private float flashDuration = 1.5f;
 
     private bool isFlashing = false;
-    private const int PIXELS_PER_UNIT = 16;
 
     private void Awake()
     {
@@ -48,22 +47,19 @@ public class CoordinateTrackerUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Update the coordinate display based on current camera position.
+    /// Update the coordinate display based on the character's current tile.
+    /// In iso the camera position no longer corresponds to a meaningful tile —
+    /// the character is the anchor now.
     /// </summary>
     private void UpdateCoordinateDisplay()
     {
-        if (cameraController == null || coordinateText == null)
+        if (cameraController == null || cameraController.Target == null || coordinateText == null)
             return;
 
-        // Get camera offset in pixel coordinates
-        Vector2 cameraOffset = cameraController.CameraOffset;
+        int tileX = Mathf.FloorToInt(cameraController.Target.WorldTileX);
+        int tileY = Mathf.FloorToInt(cameraController.Target.WorldTileY);
 
-        // Convert to sector coordinates (whole numbers)
-        int sectorX = Mathf.FloorToInt(cameraOffset.x / PIXELS_PER_UNIT);
-        int sectorY = Mathf.FloorToInt(cameraOffset.y / PIXELS_PER_UNIT);
-
-        // Update display
-        coordinateText.text = $"({sectorX}, {sectorY})";
+        coordinateText.text = $"({tileX}, {tileY})";
     }
 
     /// <summary>

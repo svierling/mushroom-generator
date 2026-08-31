@@ -1,16 +1,16 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
-/// Renders the whole ground grid as a single dynamic mesh — one draw call, no
-/// GameObject-per-tile overhead. Replaces GroundTileGenerator's pooled sprite
-/// approach; the AABB cache from that iteration is preserved so the mesh only
-/// rebuilds when the visible tile set actually changes (i.e. when the character
-/// crosses a tile boundary or zoom changes).
+/// Renders the whole ground grid as a single dynamic mesh — one MeshRenderer,
+/// two submeshes: filled diamonds for tile bodies, line-topology segments for
+/// tile borders. No textures, so there are no pixel-level aliasing artifacts
+/// at any zoom level.
 ///
-/// Uses a runtime-generated iso diamond texture at the exact tile pixel size,
-/// so the mesh is just camera-facing quads with UV mapping. All quads share
-/// one material → single draw call regardless of tile count.
+/// The AABB cache from the pooled implementation is preserved so the mesh only
+/// rebuilds when the visible tile set actually changes (character crosses a
+/// tile boundary or zoom changes).
 /// </summary>
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class GroundMeshRenderer : MonoBehaviour
@@ -20,10 +20,7 @@ public class GroundMeshRenderer : MonoBehaviour
 
     [Header("Colors")]
     [SerializeField] private Color fillColor   = new Color(0.30f, 0.65f, 0.20f, 1f);
-    [SerializeField] private Color borderColor = new Color(0.20f, 0.47f, 0.13f, 1f);
-    [Range(0f, 0.5f)]
-    [Tooltip("Border thickness as a fraction of the diamond radius. ~0.06 is a 1-2 pixel line at the current tile size.")]
-    [SerializeField] private float borderThickness = 0.06f;
+    [SerializeField] private Color borderColor = new Color(0.26f, 0.58f, 0.17f, 1f);
 
     [Header("Layering")]
     [Tooltip("Sorting order for the whole ground mesh. Set well below the smallest expected mushroom sort key so ground always draws behind.")]
@@ -34,18 +31,17 @@ public class GroundMeshRenderer : MonoBehaviour
     private MeshFilter meshFilter;
     private MeshRenderer meshRenderer;
     private Mesh mesh;
-    private Material material;
+    private Material fillMat;
+    private Material lineMat;
 
-    // Same AABB cache as MushroomGenerator/GroundTileGenerator — regen only
-    // when the visible tile set or zoom actually changes.
     private int lastMinTileX, lastMaxTileX, lastMinTileY, lastMaxTileY;
     private float lastOrthoSize;
     private bool hasCachedFrame;
 
-    // Reused each rebuild to avoid GC.
     private readonly List<Vector3> vertexBuf   = new List<Vector3>(8192);
-    private readonly List<Vector2> uvBuf       = new List<Vector2>(8192);
+    private readonly List<Color>   colorBuf    = new List<Color>(8192);
     private readonly List<int>     triangleBuf = new List<int>(12288);
+    private readonly List<int>     lineBuf     = new List<int>(16384);
 
     private void Awake()
     {
@@ -54,14 +50,17 @@ public class GroundMeshRenderer : MonoBehaviour
 
         mesh = new Mesh { name = "GroundMesh" };
         mesh.MarkDynamic();
-        // UInt32 indices — a big AABB at 0.5x zoom can easily blow past the
-        // 65k-vert limit of the default 16-bit format.
-        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        mesh.indexFormat = IndexFormat.UInt32;
+        mesh.subMeshCount = 2;
         meshFilter.sharedMesh = mesh;
 
-        Texture2D tex = BuildDiamondTexture(fillColor, borderColor, borderThickness);
-        material = new Material(Shader.Find("Sprites/Default")) { mainTexture = tex };
-        meshRenderer.sharedMaterial = material;
+        // Sprites/Default multiplies vertex color × texture. With no texture set
+        // the shader falls through to vertex color, so we don't need a shader
+        // switch to get solid colored geometry.
+        Shader shader = Shader.Find("Sprites/Default");
+        fillMat = new Material(shader);
+        lineMat = new Material(shader);
+        meshRenderer.sharedMaterials = new[] { fillMat, lineMat };
         meshRenderer.sortingOrder = sortingOrder;
 
         if (mainCamera == null) mainCamera = Camera.main;
@@ -109,13 +108,18 @@ public class GroundMeshRenderer : MonoBehaviour
                              float minUnityX, float maxUnityX, float minUnityY, float maxUnityY)
     {
         vertexBuf.Clear();
-        uvBuf.Clear();
+        colorBuf.Clear();
         triangleBuf.Clear();
+        lineBuf.Clear();
 
-        // Tile quad half-size — 2:1 iso, 32×16 px at PPU 16 → (1.0, 0.5) units.
-        float halfW = IsoProjection.TILE_WIDTH_PIXELS  * 0.5f / IsoProjection.PIXELS_PER_UNIT;
-        float halfH = IsoProjection.TILE_HEIGHT_PIXELS * 0.5f / IsoProjection.PIXELS_PER_UNIT;
+        float halfW = IsoProjection.TILE_WIDTH_PIXELS  * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 1.0
+        float halfH = IsoProjection.TILE_HEIGHT_PIXELS * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 0.5
 
+        // Each tile emits 4 verts arranged as top/right/bottom/left of the
+        // diamond, two triangles for the fill, and four line-segment indices
+        // tracing the outline. Adjacent tiles duplicate shared edges (drawn
+        // twice), which is cheap and avoids the bookkeeping of a shared vertex
+        // pool.
         for (int worldX = minTileX; worldX <= maxTileX; worldX++)
         {
             for (int worldY = minTileY; worldY <= maxTileY; worldY++)
@@ -130,68 +134,40 @@ public class GroundMeshRenderer : MonoBehaviour
 
                 int v0 = vertexBuf.Count;
 
-                // Camera-facing quad; UV maps to the full diamond texture.
-                vertexBuf.Add(new Vector3(center.x - halfW, center.y - halfH, 0f));
-                vertexBuf.Add(new Vector3(center.x - halfW, center.y + halfH, 0f));
-                vertexBuf.Add(new Vector3(center.x + halfW, center.y + halfH, 0f));
-                vertexBuf.Add(new Vector3(center.x + halfW, center.y - halfH, 0f));
+                Vector3 top    = new Vector3(center.x,         center.y + halfH, 0f);
+                Vector3 right  = new Vector3(center.x + halfW, center.y,         0f);
+                Vector3 bottom = new Vector3(center.x,         center.y - halfH, 0f);
+                Vector3 left   = new Vector3(center.x - halfW, center.y,         0f);
 
-                uvBuf.Add(new Vector2(0f, 0f));
-                uvBuf.Add(new Vector2(0f, 1f));
-                uvBuf.Add(new Vector2(1f, 1f));
-                uvBuf.Add(new Vector2(1f, 0f));
+                // Verts are white; each submesh's material tint drives its color.
+                vertexBuf.Add(top);    colorBuf.Add(Color.white);
+                vertexBuf.Add(right);  colorBuf.Add(Color.white);
+                vertexBuf.Add(bottom); colorBuf.Add(Color.white);
+                vertexBuf.Add(left);   colorBuf.Add(Color.white);
 
+                // Fill: two triangles covering the diamond.
                 triangleBuf.Add(v0);     triangleBuf.Add(v0 + 1); triangleBuf.Add(v0 + 2);
                 triangleBuf.Add(v0);     triangleBuf.Add(v0 + 2); triangleBuf.Add(v0 + 3);
+
+                // Border: four line segments tracing the outline.
+                lineBuf.Add(v0);     lineBuf.Add(v0 + 1);
+                lineBuf.Add(v0 + 1); lineBuf.Add(v0 + 2);
+                lineBuf.Add(v0 + 2); lineBuf.Add(v0 + 3);
+                lineBuf.Add(v0 + 3); lineBuf.Add(v0);
             }
         }
+
+        // Sprites/Default multiplies vertex × material color; verts are white
+        // so each submesh renders at its material's tint.
+        fillMat.color = fillColor;
+        lineMat.color = borderColor;
 
         mesh.Clear();
         mesh.SetVertices(vertexBuf);
-        mesh.SetUVs(0, uvBuf);
-        mesh.SetTriangles(triangleBuf, 0);
+        mesh.SetColors(colorBuf);
+        mesh.subMeshCount = 2;
+        mesh.SetTriangles(triangleBuf, submesh: 0);
+        mesh.SetIndices(lineBuf.ToArray(), MeshTopology.Lines, submesh: 1);
         mesh.RecalculateBounds();
-    }
-
-    private static Texture2D BuildDiamondTexture(Color fill, Color border, float borderThickness)
-    {
-        int w = IsoProjection.TILE_WIDTH_PIXELS;
-        int h = IsoProjection.TILE_HEIGHT_PIXELS;
-        Texture2D tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode   = TextureWrapMode.Clamp,
-        };
-
-        Color[] pixels = new Color[w * h];
-        Color transparent = new Color(0, 0, 0, 0);
-        float cx = (w - 1) * 0.5f;
-        float cy = (h - 1) * 0.5f;
-        float hx = w * 0.5f;
-        float hy = h * 0.5f;
-        for (int y = 0; y < h; y++)
-        {
-            for (int x = 0; x < w; x++)
-            {
-                float dx = Mathf.Abs(x - cx) / hx;
-                float dy = Mathf.Abs(y - cy) / hy;
-                float radial = dx + dy;
-                if (radial > 1f)
-                {
-                    pixels[y * w + x] = transparent;
-                }
-                else if (radial > 1f - borderThickness && border.a > 0f)
-                {
-                    pixels[y * w + x] = border;
-                }
-                else
-                {
-                    pixels[y * w + x] = fill;
-                }
-            }
-        }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return tex;
     }
 }

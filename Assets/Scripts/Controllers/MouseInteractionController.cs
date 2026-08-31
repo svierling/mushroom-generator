@@ -19,11 +19,23 @@ public class MouseInteractionController : MonoBehaviour
     [SerializeField] private bool showDebugInfo = false;
 
     private const int PIXELS_PER_UNIT = 16;
-    private const int SECTOR_SIZE_PIXELS = 16;
 
     // Mushroom sprite dimensions (from MushroomRed.png: 46x53 pixels)
     private const float SPRITE_WIDTH_PIXELS = 46f;
     private const float SPRITE_HEIGHT_PIXELS = 53f;
+    private const float SPRITE_HALF_WIDTH_UNITS  = SPRITE_WIDTH_PIXELS  * 0.5f / PIXELS_PER_UNIT;
+    private const float SPRITE_HALF_HEIGHT_UNITS = SPRITE_HEIGHT_PIXELS * 0.5f / PIXELS_PER_UNIT;
+    // MushroomInstance shifts the sprite up by half its height so the base
+    // lands on the tile. Hit-testing must apply the same offset.
+    private const float MUSHROOM_BASE_OFFSET_UNITS = SPRITE_HEIGHT_PIXELS * 0.5f / PIXELS_PER_UNIT;
+
+    // Maximum terrain height we'll ever try to pick against. Flat today, but
+    // the walk-down loop is already the right shape for Phase 0.75.
+    private const int MAX_PICK_HEIGHT = 0;
+    // Search radius (in tiles) around the cursor's back-projected tile. Needs
+    // to cover mushrooms whose base is a few tiles behind the cursor but whose
+    // tall sprite reaches forward into the cursor's screen area.
+    private const int MUSHROOM_SEARCH_RADIUS = 3;
 
     private InputActions inputActions;
     private UnityEngine.InputSystem.InputAction clickAction;
@@ -87,50 +99,52 @@ public class MouseInteractionController : MonoBehaviour
             new Vector3(mouseScreenPos.x, mouseScreenPos.y, 0f)
         );
 
-        // Check nearby sectors for mushrooms (3x3 grid around mouse position)
-        // This ensures we detect mushrooms whose sprites overlap the mouse position
         isHoveringMushroom = false;
         currentHoveredSector = Vector2Int.zero;
 
-        // Calculate sprite half-dimensions in world units
-        float spriteHalfWidth = (SPRITE_WIDTH_PIXELS / PIXELS_PER_UNIT) / 2f;  // 1.4375
-        float spriteHalfHeight = (SPRITE_HEIGHT_PIXELS / PIXELS_PER_UNIT) / 2f; // 1.65625
-
-        // Check a 3x3 grid of sectors around the mouse position
-        int centerSectorX = Mathf.FloorToInt(worldPos.x);
-        int centerSectorY = Mathf.FloorToInt(worldPos.y);
-
-        for (int offsetX = -1; offsetX <= 1; offsetX++)
+        // Height walk-down: try the tallest possible height first, project the
+        // cursor down to that height's tile, check if terrain there actually is
+        // that tall (or taller). Flat terrain today → one iteration.
+        Vector2 pickedTileF = IsoProjection.UnityToWorld(worldPos.x, worldPos.y, 0);
+        for (int h = MAX_PICK_HEIGHT; h >= 0; h--)
         {
-            for (int offsetY = -1; offsetY <= 1; offsetY++)
+            Vector2 candidate = IsoProjection.UnityToWorld(worldPos.x, worldPos.y, h);
+            int cx = Mathf.FloorToInt(candidate.x);
+            int cy = Mathf.FloorToInt(candidate.y);
+            TerrainSample s = TerrainService.SampleAt(cx, cy);
+            if (s.height >= h)
+            {
+                pickedTileF = candidate;
+                break;
+            }
+        }
+
+        int centerSectorX = Mathf.FloorToInt(pickedTileF.x);
+        int centerSectorY = Mathf.FloorToInt(pickedTileF.y);
+
+        // Scan a small tile neighborhood — a mushroom whose base is on a tile
+        // behind the cursor can still overlap the cursor because its sprite
+        // extends upward on screen.
+        for (int offsetX = -MUSHROOM_SEARCH_RADIUS; offsetX <= MUSHROOM_SEARCH_RADIUS; offsetX++)
+        {
+            for (int offsetY = -MUSHROOM_SEARCH_RADIUS; offsetY <= MUSHROOM_SEARCH_RADIUS; offsetY++)
             {
                 int checkSectorX = centerSectorX + offsetX;
                 int checkSectorY = centerSectorY + offsetY;
 
-                // Check if mushroom exists at this sector
-                MushroomData data = MushroomData.Generate(
-                    (uint)checkSectorX,
-                    (uint)checkSectorY
-                );
+                MushroomData data = MushroomData.Generate((uint)checkSectorX, (uint)checkSectorY);
+                if (!data.exists) continue;
 
-                if (data.exists)
+                TerrainSample tileSample = TerrainService.SampleAt(checkSectorX, checkSectorY);
+                Vector3 spriteCenter = IsoProjection.WorldToUnity(checkSectorX, checkSectorY, tileSample.height)
+                                     + new Vector3(0f, MUSHROOM_BASE_OFFSET_UNITS, 0f);
+
+                if (Mathf.Abs(worldPos.x - spriteCenter.x) < SPRITE_HALF_WIDTH_UNITS &&
+                    Mathf.Abs(worldPos.y - spriteCenter.y) < SPRITE_HALF_HEIGHT_UNITS)
                 {
-                    // Calculate mushroom center position
-                    // Matches MushroomGenerator: (sector * 16 - 8) / 16
-                    float mushroomCenterX = (checkSectorX * SECTOR_SIZE_PIXELS - 8f) / PIXELS_PER_UNIT;
-                    float mushroomCenterY = (checkSectorY * SECTOR_SIZE_PIXELS - 8f) / PIXELS_PER_UNIT;
-
-                    // Check if mouse is within mushroom sprite bounds
-                    float deltaX = Mathf.Abs(worldPos.x - mushroomCenterX);
-                    float deltaY = Mathf.Abs(worldPos.y - mushroomCenterY);
-
-                    if (deltaX < spriteHalfWidth && deltaY < spriteHalfHeight)
-                    {
-                        // Mouse is hovering over this mushroom!
-                        isHoveringMushroom = true;
-                        currentHoveredSector = new Vector2Int(checkSectorX, checkSectorY);
-                        goto FoundMushroom; // Exit both loops
-                    }
+                    isHoveringMushroom = true;
+                    currentHoveredSector = new Vector2Int(checkSectorX, checkSectorY);
+                    goto FoundMushroom;
                 }
             }
         }
@@ -140,18 +154,16 @@ public class MouseInteractionController : MonoBehaviour
         // Debug output
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
-            Debug.Log($"Mouse sector: ({currentHoveredSector.x}, {currentHoveredSector.y}) | Mushroom exists: {isHoveringMushroom}");
+            Debug.Log($"Mouse tile: ({currentHoveredSector.x}, {currentHoveredSector.y}) | Mushroom exists: {isHoveringMushroom}");
         }
 
-        // Update highlight rectangle
+        // Update highlight rectangle — position it at the mushroom's iso sprite
+        // center so the yellow border frames the sprite regardless of zoom.
         if (isHoveringMushroom)
         {
-            // Calculate world position for highlight (matching C++ offset: screen_sector * 16 - 8)
-            Vector3 highlightWorldPos = new Vector3(
-                (currentHoveredSector.x * SECTOR_SIZE_PIXELS - 8) / (float)PIXELS_PER_UNIT,
-                (currentHoveredSector.y * SECTOR_SIZE_PIXELS - 8) / (float)PIXELS_PER_UNIT,
-                0f
-            );
+            TerrainSample hoverSample = TerrainService.SampleAt(currentHoveredSector.x, currentHoveredSector.y);
+            Vector3 highlightWorldPos = IsoProjection.WorldToUnity(currentHoveredSector.x, currentHoveredSector.y, hoverSample.height)
+                                      + new Vector3(0f, MUSHROOM_BASE_OFFSET_UNITS, 0f);
             highlightRect.Show(highlightWorldPos);
         }
         else

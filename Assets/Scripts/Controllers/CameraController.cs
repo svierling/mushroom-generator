@@ -17,6 +17,7 @@ public class CameraController : MonoBehaviour
 {
     [Header("Follow Target")]
     [SerializeField] private PlayerController target;
+    public PlayerController Target => target;
 
     [Header("Deadzone")]
     [Tooltip("Deadzone half-width as a fraction of the camera's on-screen half-width. Character roams this fraction of the screen (both sides) before the camera scrolls. Scales with zoom so it feels consistent at 0.5x/1x/2x.")]
