@@ -882,6 +882,8 @@ GameObject:
   - component: {fileID: 519420029}
   - component: {fileID: 519420030}
   - component: {fileID: 519420033}
+  - component: {fileID: 519420100}
+  - component: {fileID: 519420101}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1023,10 +1025,34 @@ MonoBehaviour:
   deadzoneHalfWidthScreenFraction: 0.33
   deadzoneHalfHeightScreenFraction: 0.33
   zoomLevels:
+  - 0.25
   - 0.5
   - 1
-  - 2
-  defaultZoomIndex: 1
+  defaultZoomIndex: 2
+--- !u!114 &519420100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 519420028}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ce92ef9ce5154055a95f27370ff95db8, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::MinimapUI
+--- !u!114 &519420101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 519420028}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5eb3b3f861c84bb59ae71a32343c45cb, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::NataliaViewToggle
 --- !u!1 &554655684
 GameObject:
   m_ObjectHideFlags: 0
