@@ -23,13 +23,11 @@ public class MainMenuUI : MonoBehaviour
     [SerializeField] private Button cancelNewWorldButton;
     [SerializeField] private TextMeshProUGUI newWorldErrorText;
 
-    [Header("Plot Size Selector (optional; wire in Editor for UI)")]
-    [Tooltip("Toggle for the Small plot (256×256 tiles). Optional — if none of the three toggles are wired, Medium is used as the default.")]
-    [SerializeField] private Toggle plotSizeSmallToggle;
-    [Tooltip("Toggle for the Medium plot (512×512 tiles). The default plot size.")]
-    [SerializeField] private Toggle plotSizeMediumToggle;
-    [Tooltip("Toggle for the Large plot (1024×1024 tiles).")]
-    [SerializeField] private Toggle plotSizeLargeToggle;
+    [Header("Plot Size Selector")]
+    [Tooltip("Vertical pixel offset for the runtime-built plot-size selector. Positive Y moves it up in the New World panel; nudge if it overlaps the world name input or the create button.")]
+    [SerializeField] private float plotSelectorYOffset = -20f;
+    [Tooltip("Selector footprint in UI pixels. Height is the row height; width is the 3-toggle strip.")]
+    [SerializeField] private Vector2 plotSelectorSize = new Vector2(360f, 44f);
 
     [Header("Load World Panel")]
     [SerializeField] private GameObject loadWorldPanel;
@@ -52,6 +50,12 @@ public class MainMenuUI : MonoBehaviour
     [SerializeField] private string gameplaySceneName = "MainScene";
 
     private string worldPendingDeletion;
+
+    // Plot-size state — updated by the runtime-built toggle group in
+    // EnsurePlotSizeSelector. Persists across open/close of the New World
+    // panel so the last choice stays selected.
+    private PlotSize selectedPlotSize = PlotSize.Medium;
+    private GameObject plotSelectorRoot;
 
     private void Start()
     {
@@ -156,6 +160,7 @@ public class MainMenuUI : MonoBehaviour
         if (newWorldPanel != null)
         {
             newWorldPanel.SetActive(true);
+            EnsurePlotSizeSelector();
             if (worldNameInput != null)
             {
                 worldNameInput.text = "";
@@ -231,15 +236,91 @@ public class MainMenuUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Read the plot-size toggles (if wired). Falls back to Medium when no
-    /// toggle is wired or none is checked — this keeps the New World panel
-    /// working on scenes that haven't been updated to include the selector.
+    /// Read the current plot-size selection. Updated by the runtime-built
+    /// toggle group; defaults to Medium until the New World panel is opened.
     /// </summary>
-    private PlotSize GetSelectedPlotSize()
+    private PlotSize GetSelectedPlotSize() => selectedPlotSize;
+
+    /// <summary>
+    /// Build the plot-size selector inside <see cref="newWorldPanel"/> the
+    /// first time the panel opens. Mirrors the runtime-UI pattern used by
+    /// <see cref="CreateWorldListItem"/> / <see cref="CreateDeleteButton"/> —
+    /// zero manual Editor wiring required.
+    /// </summary>
+    private void EnsurePlotSizeSelector()
     {
-        if (plotSizeSmallToggle != null && plotSizeSmallToggle.isOn) return PlotSize.Small;
-        if (plotSizeLargeToggle != null && plotSizeLargeToggle.isOn) return PlotSize.Large;
-        return PlotSize.Medium;
+        if (plotSelectorRoot != null || newWorldPanel == null) return;
+
+        var containerGO = new GameObject("PlotSizeSelector");
+        containerGO.transform.SetParent(newWorldPanel.transform, false);
+        plotSelectorRoot = containerGO;
+
+        var containerRect = containerGO.AddComponent<RectTransform>();
+        containerRect.anchorMin = new Vector2(0.5f, 0.5f);
+        containerRect.anchorMax = new Vector2(0.5f, 0.5f);
+        containerRect.pivot = new Vector2(0.5f, 0.5f);
+        containerRect.anchoredPosition = new Vector2(0f, plotSelectorYOffset);
+        containerRect.sizeDelta = plotSelectorSize;
+
+        var hlg = containerGO.AddComponent<HorizontalLayoutGroup>();
+        hlg.childAlignment = TextAnchor.MiddleCenter;
+        hlg.spacing = 8f;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = true;
+        hlg.childForceExpandHeight = true;
+        hlg.padding = new RectOffset(4, 4, 4, 4);
+
+        var group = containerGO.AddComponent<ToggleGroup>();
+        group.allowSwitchOff = false;
+
+        CreatePlotSizeToggle(containerGO.transform, "Small",  PlotSize.Small,  group);
+        CreatePlotSizeToggle(containerGO.transform, "Medium", PlotSize.Medium, group);
+        CreatePlotSizeToggle(containerGO.transform, "Large",  PlotSize.Large,  group);
+    }
+
+    private void CreatePlotSizeToggle(Transform parent, string label, PlotSize size, ToggleGroup group)
+    {
+        // Palette matches CreateWorldListItem's blue-ish button style so
+        // the selector reads as part of the same New World panel.
+        Color32 offColor = new Color32(70, 70, 100, 255);
+        Color32 onColor  = new Color32(80, 140, 90, 255);
+        bool isDefault   = size == selectedPlotSize;
+
+        var toggleGO = new GameObject($"Toggle_{label}");
+        toggleGO.transform.SetParent(parent, false);
+
+        var image = toggleGO.AddComponent<Image>();
+        image.color = isDefault ? onColor : offColor;
+
+        var toggle = toggleGO.AddComponent<Toggle>();
+        toggle.group = group;
+        toggle.isOn = isDefault;
+        toggle.targetGraphic = image;
+
+        // Text label as a stretched child; TextMeshPro for consistency with
+        // every other bit of text in this scene.
+        var textGO = new GameObject("Label");
+        textGO.transform.SetParent(toggleGO.transform, false);
+        var text = textGO.AddComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 18f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.enableAutoSizing = false;
+        text.enableWordWrapping = false;
+        var textRect = text.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        // Persist selection + repaint on state change.
+        toggle.onValueChanged.AddListener(on =>
+        {
+            image.color = on ? onColor : offColor;
+            if (on) selectedPlotSize = size;
+        });
     }
 
     private void ShowNewWorldError(string message)
