@@ -3,7 +3,8 @@ using UnityEngine;
 
 /// <summary>
 /// Main generation system for mushroom rendering.
-/// Implements sector-based procedural generation matching the C++ olcPixelGameEngine implementation.
+/// Implements tile-based procedural generation matching the C++ olcPixelGameEngine
+/// implementation (the C++ port called these "sectors"; identical semantics).
 /// Regenerates visible mushrooms every frame using object pooling for performance.
 /// </summary>
 public class MushroomGenerator : MonoBehaviour
@@ -15,8 +16,8 @@ public class MushroomGenerator : MonoBehaviour
     [SerializeField] private GameObject mushroomPrefab;
 
     [Header("Performance Settings")]
-    [Tooltip("Initial size of the object pool. Increase if pool expands frequently during play.")]
-    [SerializeField] private int poolInitialSize = 100;
+    [Tooltip("Initial size of the object pool. Sized for worst-case zoom-out (0.5x, ~19,600 visible tiles × 1/70 spawn = ~280 mushrooms), rounded up with headroom so wide zooms don't trigger mid-frame Instantiate hitches.")]
+    [SerializeField] private int poolInitialSize = 500;
 
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
@@ -126,26 +127,26 @@ public class MushroomGenerator : MonoBehaviour
             Debug.Log($"Tile AABB: X[{minTileX},{maxTileX}] Y[{minTileY},{maxTileY}] = {span} tiles | Camera pos: {cameraPos}");
         }
 
-        for (int worldSectorX = minTileX; worldSectorX <= maxTileX; worldSectorX++)
+        for (int worldTileX = minTileX; worldTileX <= maxTileX; worldTileX++)
         {
-            for (int worldSectorY = minTileY; worldSectorY <= maxTileY; worldSectorY++)
+            for (int worldTileY = minTileY; worldTileY <= maxTileY; worldTileY++)
             {
                 // Cheap iso-visibility test: project the tile and reject if
                 // the projection falls outside the padded camera rect.
-                TerrainSample sample = TerrainService.SampleAt(worldSectorX, worldSectorY);
-                Vector3 unityPos = IsoProjection.WorldToUnity(worldSectorX, worldSectorY, sample.height);
+                TerrainSample sample = TerrainService.SampleAt(worldTileX, worldTileY);
+                Vector3 unityPos = IsoProjection.WorldToUnity(worldTileX, worldTileY, sample.height);
                 if (unityPos.x < minUnityX || unityPos.x > maxUnityX ||
                     unityPos.y < minUnityY || unityPos.y > maxUnityY)
                 {
                     continue;
                 }
 
-                MushroomData data = MushroomData.Generate((uint)worldSectorX, (uint)worldSectorY);
+                MushroomData data = MushroomData.Generate((uint)worldTileX, (uint)worldTileY);
                 if (!data.exists) continue;
 
                 MushroomInstance mushroom = GetFromPool();
                 Sprite sprite = spriteData.GetSprite(data.type);
-                mushroom.Configure(worldSectorX, worldSectorY, sample.height, sprite);
+                mushroom.Configure(worldTileX, worldTileY, sample.height, sprite);
             }
         }
 

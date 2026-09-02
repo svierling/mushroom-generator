@@ -140,7 +140,7 @@ public class InfoWindowUI : MonoBehaviour
 
         if (coordinatesText != null)
         {
-            coordinatesText.text = $"({data.sectorCoords.x}, {data.sectorCoords.y})";
+            coordinatesText.text = $"({data.tileCoords.x}, {data.tileCoords.y})";
         }
     }
 

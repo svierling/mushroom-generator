@@ -10,6 +10,16 @@ using UnityEngine;
 public class WorldSaveData
 {
     /// <summary>
+    /// Save format version. Bump when adding/removing/reshaping fields so old
+    /// saves can be migrated deterministically. Missing (older) saves
+    /// deserialize as 0; new saves start at CURRENT_SCHEMA_VERSION.
+    /// </summary>
+    public int schemaVersion = CURRENT_SCHEMA_VERSION;
+
+    /// <summary>Current save-format version. Increment when the shape of this class changes.</summary>
+    public const int CURRENT_SCHEMA_VERSION = 1;
+
+    /// <summary>
     /// User-provided name for this world.
     /// </summary>
     public string worldName;
