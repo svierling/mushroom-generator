@@ -141,7 +141,7 @@ public class PlayerController : MonoBehaviour
 
         // Hide the character sprite (and its shadow) in Plot Overview so the
         // "terrain + biomes + mushrooms" view stays clean per the design spec.
-        bool spriteVisible = showCharacterSprite && mode != CameraMode.PlotOverview;
+        bool spriteVisible = mode != CameraMode.PlotOverview;
         if (spriteRenderer != null && spriteRenderer.enabled != spriteVisible)
             spriteRenderer.enabled = spriteVisible;
         if (shadowRenderer != null && shadowRenderer.enabled != spriteVisible)
