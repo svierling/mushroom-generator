@@ -28,10 +28,10 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float deadzoneHalfHeightScreenFraction = 0.33f;
 
     [Header("Zoom")]
-    [Tooltip("Zoom multipliers in ascending order. Index 1 is the reference '1x' level; the camera's initial orthographicSize is treated as the 1x size.")]
-    [SerializeField] private float[] zoomLevels = { 0.5f, 1f, 2f };
-    [Tooltip("Which zoom level the camera boots up at. 0=0.5x, 1=1x, 2=2x.")]
-    [SerializeField] private int defaultZoomIndex = 1;
+    [Tooltip("Zoom multipliers in ascending order. The base '1x' is whatever orthographicSize the Main Camera is configured with in the scene; values below 1 zoom out (bigger view), values above 1 zoom in.")]
+    [SerializeField] private float[] zoomLevels = { 0.25f, 0.5f, 1f };
+    [Tooltip("Which zoom level the camera boots up at. Index 2 = 1x with the default zoomLevels array; press 1/2/3 to jump to 0.25x/0.5x/1x.")]
+    [SerializeField] private int defaultZoomIndex = 2;
 
     [Header("Free Cam")]
     [Tooltip("Camera panning speed in Unity units per second when Free Cam mode is active.")]
