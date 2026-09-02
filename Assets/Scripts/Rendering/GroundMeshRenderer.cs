@@ -235,22 +235,23 @@ public class GroundMeshRenderer : MonoBehaviour
                     varTriangleBuf.Add(vv);     varTriangleBuf.Add(vv + 2); varTriangleBuf.Add(vv + 3);
                 }
 
-                // Plot-boundary cliff faces. For each of the tile's 4 iso
-                // neighbors that fall outside the plot, emit a rectangular
-                // quad dropping from the shared edge down by cliffDropUnits.
+                // Plot-boundary cliff faces. In this iso projection the
+                // camera looks toward +Y, so only the SE and SW edges of a
+                // boundary tile are camera-facing — those cliffs drop into
+                // empty screen area beyond the plot. The NE and NW edges
+                // would drop *into* the same screen strip that in-plot
+                // tiles closer to the camera occupy, producing a dark
+                // overlay artifact; skipping them means MaxX/MaxY plot
+                // edges "just end", but from the default camera angle
+                // those edges are the far horizon and read fine.
                 // Edge → off-plot neighbor mapping:
-                //   NE edge (N corner→E corner): (worldX+1, worldY)
                 //   SE edge (E corner→S corner): (worldX,   worldY-1)
                 //   SW edge (S corner→W corner): (worldX-1, worldY)
-                //   NW edge (W corner→N corner): (worldX,   worldY+1)
-                Vector3 nCorner = new Vector3(center.x,         center.y + halfH, 0f);
                 Vector3 eCorner = new Vector3(center.x + halfW, center.y,         0f);
                 Vector3 sCorner = new Vector3(center.x,         center.y - halfH, 0f);
                 Vector3 wCorner = new Vector3(center.x - halfW, center.y,         0f);
-                if (!WorldBounds.Contains(worldX + 1, worldY)) EmitCliffQuad(nCorner, eCorner, cliffDropUnits);
                 if (!WorldBounds.Contains(worldX,     worldY - 1)) EmitCliffQuad(eCorner, sCorner, cliffDropUnits);
-                if (!WorldBounds.Contains(worldX - 1, worldY)) EmitCliffQuad(sCorner, wCorner, cliffDropUnits);
-                if (!WorldBounds.Contains(worldX,     worldY + 1)) EmitCliffQuad(wCorner, nCorner, cliffDropUnits);
+                if (!WorldBounds.Contains(worldX - 1, worldY))     EmitCliffQuad(sCorner, wCorner, cliffDropUnits);
             }
         }
 
