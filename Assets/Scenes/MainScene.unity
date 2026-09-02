@@ -490,8 +490,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   moveSpeedUnitsPerSecond: 7.5
   sprintMultiplier: 2
-  walkSheet: {fileID: 2800000, guid: 42e7c4d0a21b4544eb68aac627e6a064, type: 3}
-  sprintSheet: {fileID: 2800000, guid: 7ce02da99cd8bd74da1207c9e3f9c9ee, type: 3}
+  walkSheet: {fileID: 0}
+  sprintSheet: {fileID: 0}
   cellSize: {x: 48, y: 64}
   walkColumns: 6
   sprintColumns: 8
