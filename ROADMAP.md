@@ -6,7 +6,7 @@ This document outlines the architectural plan for scaling the Mushroom Generator
 
 ## Executive Summary
 
-The current architecture is **well-designed for its original scope** (3 fixed mushroom types) but has **structural limitations that block scaling** to thousands of procedural variations. The foundation is solid enough to refactor incrementally rather than rewriting.
+The Phase 0.5 isometric overhaul and Phase 1 world/main-menu work have shipped; the game is a playable isometric explorer with save/load and world seeds. Recent foundation-optimizations work landed sprite atlasing, sort-order safety, RNG entity namespacing, tile-terminology cleanup, and save schema versioning. The current focus is on content scale-up: real terrain generation (Phase 0.75), 1600-combo component-based mushrooms (Phase 2 — data shape is prepped), and eventually resources / foliage / mobs / NPCs.
 
 ---
 
@@ -14,12 +14,14 @@ The current architecture is **well-designed for its original scope** (3 fixed mu
 
 | Component | Why It's Good |
 |-----------|---------------|
-| **ProceduralRNG** | Excellent - stateful, deterministic, unlimited capacity for component generation |
-| **Object Pooling** | Efficient - 100+ instances, zero GC after warmup, dynamic expansion |
-| **Sector Coordinate System** | Perfect - infinite grid, negative coordinate handling solved |
-| **SelectionManager Events** | Clean pattern - loose coupling between UI and game logic |
-| **AudioManager Singleton** | Gold standard - replicate this pattern for new managers |
-| **Input System** | Modern - using new InputSystem package correctly |
+| **ProceduralRNG** | Stateful, deterministic, unlimited capacity for component generation. Now namespaced by `EntityNamespace` so trees/ores/mobs get independent streams. |
+| **Object Pooling** | 500-instance pool pre-warmed for 0.5x-zoom worst case, zero GC after warmup, dynamic expansion. |
+| **Tile Coordinate System** | Infinite integer grid, negative coordinates safe (RNG uses XOR-based hash). |
+| **Isometric Projection** | 2:1 dimetric via `IsoProjection`, matches pikuma-standard `(x-y, x+y)` math. Sort order clamped to Int16 range for safety at extreme coords. |
+| **SelectionManager Events** | Loose coupling between UI and game logic, scene-scoped singleton guard. |
+| **AudioManager Singleton** | Gold standard — replicate this pattern for new managers. |
+| **Input System** | New InputSystem package, screen-relative WASD, sprint, mouse picking with height walk-down. |
+| **Sprite Atlas** | `Mushrooms.spriteatlas` collapses visible mushrooms into a single draw call. Register new sprites here. |
 
 ---
 
@@ -50,107 +52,11 @@ The current architecture is **well-designed for its original scope** (3 fixed mu
 
 ## Proposed Refactoring Phases
 
-### Phase 0.5: Isometric Perspective Overhaul (v1.0.5)
-**Goal**: Convert the eagle's-eye 2D top-down world into a 2D isometric world centered on a main character sprite, with a follow-camera that uses a deadzone window and three discrete zoom levels. Procedural generation, RNG, and sector-coordinate math stay exactly as-is — this is a rendering + camera + input overhaul plus the addition of a player character.
+### Phase 0.5: Isometric Perspective Overhaul (v1.0.5) — SHIPPED
 
-**Note**: Terrain heights + slopes are **mechanically prepared for** in this phase — every tile carries a height value + slope type end-to-end from day one — but actual generation stays flat (all height = 0). Real terrain generation is Phase 0.75 below.
+Converted the top-down world to 2:1 isometric with a follow-camera, character sprite (Landstalker-style screen-relative WASD + sprint), three discrete zoom levels, deadzone camera framing, mesh-based ground tiles, iso mouse picking with a height walk-down, and terrain-provider plumbing that carries height + slope through the whole pipeline (all flat today, but ready for Phase 0.75).
 
-#### Design decisions (locked in)
-- **Faked 2D isometric** with 2:1 tile ratio (not a tilted 3D camera). World math stays cartesian; iso transform applied at render time.
-- **Camera locks to character with a deadzone window** (Metroid/Zelda/RCT-style). Character can roam inside the deadzone without moving the camera; camera only scrolls when the character pushes against the edge. Deadzone size scales with zoom so it feels the same at all zoom levels.
-- **Smooth continuous movement** (not tile-locked hops). WASD moves the character, Shift sprints.
-- **Ground tile grid** renders per sector using existing grass sprites.
-- **Zoom levels**: 0.5x / 1x / 2x, cycled via mouse wheel or jumped via `[1]` `[2]` `[3]` keys.
-- **Placeholder character**: solid colored capsule (~24x32 px) until a real sprite sheet exists.
-
-#### Implementation sub-phases
-
-**Sub-phase A — Projection + terrain-provider foundation (no visible change yet)**
-1. Add `IsoProjection.cs` with `WorldToUnity(x, y, height)` / `UnityToWorld` / `HeightAtSubtile`. Constants: `TILE_WIDTH_PIXELS = 32`, `TILE_HEIGHT_PIXELS = 16`, `HEIGHT_STEP_PIXELS = 8`, `HEIGHT_SORT_WEIGHT`.
-2. Add `TerrainSample` struct (`int height`, `SlopeType slope`), `SlopeType` enum (Flat + 4 edge + 4 corner slopes), `ITerrainProvider` interface, `FlatTerrainProvider` (returns `{ height: 0, slope: Flat }` for every coord), and a `TerrainService` singleton that consumers read from.
-3. Update `MushroomInstance` to sample terrain height and use `IsoProjection.WorldToUnity(x, y, height)` for position; sort formula becomes `-((x + y) * 100 + height * HEIGHT_SORT_WEIGHT)`. Visible outcome: mushrooms shift to isometric arrangement (still flat, no character, no ground).
-
-**Sub-phase B — Diamond visible region**
-4. Update `MushroomGenerator` iteration to a diamond bounding box (currently rectangular). Iterate the rectangular bounding-box of the diamond in tile space and skip tiles that fall outside the camera rect after projection. Verify no pop-in at edges.
-
-**Sub-phase C — Character + camera deadzone**
-5. Create `PlayerCapsule.png` (~24x32), `Character.prefab`, `CharacterController.cs`. Character reads `Player.Move` / `Player.Sprint`, tracks float tile position, samples terrain height at position, projects to Unity world via `IsoProjection`.
-6. Rewrite `CameraController.cs` from free-camera to follow-character-with-deadzone. Character owns `Player.Move` (no more WASD on the camera). Deadzone expressed in tiles (e.g. 5-tile half-width) and scales with zoom.
-
-**Sub-phase D — Zoom**
-7. Add `Player.Zoom` input action (mouse wheel Y axis + `1` / `2` / `3` keys).
-8. Zoom adjusts `Camera.main.orthographicSize` between 0.5x / 1x / 2x and scales the deadzone proportionally. Persist last-selected zoom to `WorldManager.CurrentWorld` alongside camera position.
-
-**Sub-phase E — Ground tiles**
-9. `GroundTileGenerator` + `GroundTileInstance`, mirror of the mushroom pipeline. One tile per visible sector, sorted below mushrooms. Each tile samples `TerrainService.Provider` for its `TerrainSample` — bodies are correct for slopes even though the flat provider makes every tile flat today. Slope-variant sprite slots exist (e.g. `grass_slope_ne.png`) but fall back to `grass.png` until slope art lands.
-10. Verify tiles cover visible diamond with no gaps at all zoom levels.
-
-**Sub-phase F — Mouse picking + polish**
-11. Update `MouseInteractionController` for iso screen→tile conversion (`ScreenToWorldPoint` then `IsoProjection.UnityToWorld`). Include a **height walk-down loop** (single iteration on flat terrain today; correct shape for slopes tomorrow — walks down from max possible height until it finds a tile whose projected Y matches the cursor).
-12. Verify `HighlightRectangle` frames the hovered mushroom correctly at all zoom levels.
-13. Update `CoordinateTrackerUI` / `CoordinateSearchUI` to display / navigate to the **character's** position instead of the camera center. Search teleports the character; camera catches up via deadzone follow.
-
-**Sub-phase G — Height sanity check (still no generation)**
-14. Temporarily swap `TerrainService.Provider` for a hand-coded `StaircaseTerrainProvider` returning `height = x / 4` (a 3-level staircase along the X axis). Verify tiles / mushrooms / character all shift up correctly, sort order stays consistent, mouse picking hits the topmost tile. **Revert to `FlatTerrainProvider` before merge** — this is a smoke test, not a feature.
-
-#### New files
-- `Assets/Scripts/Core/IsoProjection.cs`
-- `Assets/Scripts/Core/TerrainSample.cs`
-- `Assets/Scripts/Core/ITerrainProvider.cs`
-- `Assets/Scripts/Core/FlatTerrainProvider.cs`
-- `Assets/Scripts/Controllers/CharacterController.cs`
-- `Assets/Scripts/Rendering/GroundTileGenerator.cs`
-- `Assets/Scripts/Rendering/GroundTileInstance.cs`
-- `Assets/Prefabs/Character.prefab`
-- `Assets/Prefabs/GroundTile.prefab`
-- `Assets/Sprites/Character/PlayerCapsule.png`
-
-#### Files to modify
-- `Assets/Scripts/Controllers/CameraController.cs` — free-camera → follow-character-with-deadzone; add zoom; persist zoom level
-- `Assets/Scripts/Rendering/MushroomGenerator.cs` — diamond iteration, terrain sampling, iso projection
-- `Assets/Scripts/Rendering/MushroomInstance.cs` — iso position + iso+height sort formula
-- `Assets/Scripts/Controllers/MouseInteractionController.cs` — iso screen→tile with stubbed height walk-down
-- `Assets/Scripts/UI/HighlightRectangle.cs` — verify highlight framing under iso projection
-- `Assets/Settings/InputActions.inputactions` — add `Player.Zoom` action
-- `Assets/Scenes/MainScene.unity` — add Character prefab instance at (0, 0), add GroundTileGenerator GameObject, wire CameraController → Character
-- `Assets/Scripts/UI/CoordinateTrackerUI.cs` and `Assets/Scripts/UI/CoordinateSearchUI.cs` — display / navigate character position
-
-#### Verification plan
-
-*Sub-phase A/B:*
-1. Existing mushrooms appear in isometric arrangement (diamond-shaped world)
-2. Southeast-most mushrooms sort in front of northwest-most
-3. No off-screen mushrooms visible; no gaps at camera edges when moving
-
-*Sub-phase C:*
-4. Character capsule appears at world (0, 0); WASD moves it smoothly; Shift sprints
-5. Character can walk anywhere inside the central deadzone rectangle with the camera stationary
-6. When the character crosses the deadzone edge, camera scrolls to keep the character on the edge — character never escapes the deadzone
-
-*Sub-phase D:*
-7. Mouse wheel cycles zoom through 0.5x → 1x → 2x with visible area scaling correctly
-8. `1` / `2` / `3` jump directly to each zoom level
-9. Deadzone feels consistent across zoom levels
-10. Zoom level persists across scene reload
-
-*Sub-phase E:*
-11. Grass tiles cover the entire visible diamond with no gaps
-12. Tiles sort behind mushrooms and character
-13. No pool exhaustion / stutter at 2x zoom-out
-
-*Sub-phase F:*
-14. Hovering mouse over a mushroom highlights it correctly at all zoom levels
-15. Clicking a mushroom opens its info window
-16. `CoordinateTrackerUI` displays the character's current world tile
-17. `CoordinateSearchUI` teleports the character (not the camera); camera catches up
-
-*Sub-phase G (staircase smoke test, reverted before merge):*
-18. With `StaircaseTerrainProvider`, tiles form three east-rising plateaus
-19. Mushrooms on raised tiles sit visibly on top of their tiles
-20. Cliff face tiles sort in front of the lower plateau behind them
-21. Character walking east visibly steps up at plateau boundaries
-22. Mouse cursor over a raised plateau selects the raised tile, not the flat tile behind it
-23. **Revert `TerrainService.Provider` to `FlatTerrainProvider` before commit**
+Key modules landed: `IsoProjection`, `TerrainSample`, `ITerrainProvider` / `TerrainService` / `FlatTerrainProvider`, `StaircaseTerrainProvider` (test util), `PlayerController`, `GroundMeshRenderer`, plus iso updates to `MushroomGenerator`, `MushroomInstance`, `MouseInteractionController`, `CameraController`, coord UI. See git history for sub-phase commits.
 
 ---
 
@@ -170,67 +76,9 @@ Files affected are limited to the terrain provider itself, the sprite folder, an
 
 ---
 
-### Phase 1: World Seeds & Main Menu (v1.1.0)
-**Goal**: Different "generations" with unique worlds, main menu for New/Load
-**Note**: Works with current 3 mushroom types - no sprite changes needed
+### Phase 1: World Seeds & Main Menu (v1.1.0) — SHIPPED
 
-**Prerequisite** (from foundation audit, 2026-09-02): Refactor scene bootstrap for multi-scene support.
-Currently `MushroomGenerator`, `MouseInteractionController`, and camera code have hardwired `SerializeField` refs that only resolve inside `MainScene.unity`. Loading `MainMenu → MainScene` will null-ref unless refs move to `FindFirstObjectByType<T>()` with the Inspector ref as an override, or a `GameBootstrap` MonoBehaviour re-wires them on scene load. Also ensure `WorldManager` (already `DontDestroyOnLoad`) initializes before any consumer via `[RuntimeInitializeOnLoadMethod]` or explicit script execution order.
-
-1. **Add World Seed to RNG**
-   - Modify `ProceduralRNG` constructor to accept world seed
-   - New seeding: `(worldSeed ^ x) << 16 | (worldSeed ^ y)` or similar
-   - Same coordinates + different seed = different mushroom
-
-2. **Create WorldManager (Singleton)**
-   - Holds current world seed and world name
-   - Generates random seed for new worlds
-   - Provides seed to all generation systems
-
-3. **Create Main Menu Scene**
-   - "New Generation" button -> generates random seed, prompts for world name
-   - "Load Generation" button -> shows list of saved worlds
-   - "Continue" button -> loads last played world (if exists)
-   - **Theme music**: Loop `Assets/Audio/Music/Mushroom Generator.ogg` while in menu
-   - **Version display**: Show version number in top-left corner (e.g., "v1.1.0")
-
-4. **Version Number System**
-   - Store version in code constant (`GameVersion.cs`)
-   - Display in top-left corner of ALL scenes (persists during gameplay too)
-   - Phase 1 release = v1.1.0 (up from v1.0.0)
-   - Stays visible until official release
-
-5. **Main Menu Audio**
-   - Play theme song on MainMenu scene load
-   - Loop continuously while in menu
-   - Stop when transitioning to gameplay (MainScene)
-
-6. **Create WorldSaveData structure**
-   ```csharp
-   public class WorldSaveData {
-       public string worldName;
-       public uint worldSeed;
-       public Vector2 lastCameraPosition;
-       public DateTime lastPlayed;
-   }
-   ```
-
-7. **Scene flow**
-   - MainMenu scene -> MainScene (gameplay)
-   - WorldManager persists across scenes (DontDestroyOnLoad)
-   - Music stops on scene transition
-
-**New files**:
-- `Assets/Scripts/Managers/WorldManager.cs`
-- `Assets/Scripts/Data/WorldSaveData.cs`
-- `Assets/Scripts/Data/GameVersion.cs`
-- `Assets/Scripts/UI/MainMenuUI.cs`
-- `Assets/Scripts/UI/VersionDisplay.cs`
-- `Assets/Scenes/MainMenu.unity`
-
-**Files to modify**:
-- `Assets/Scripts/Core/ProceduralRNG.cs` (add world seed parameter)
-- `Assets/Scripts/Data/MushroomData.cs` (pass world seed to RNG)
+Each world has a random `uint` seed persisted in `WorldSaveData` (now with a `schemaVersion` field for future migrations). `MainMenu.unity` + `MainMenuUI` + `ReturnToMenuUI` handle New/Load/Continue/Delete flows and theme-music playback; `WorldManager` (`DontDestroyOnLoad` singleton) persists across scenes; version display and Escape-to-menu are wired.
 
 ---
 
@@ -238,62 +86,14 @@ Currently `MushroomGenerator`, `MouseInteractionController`, and camera code hav
 **Goal**: Enable component-based mushroom generation (caps, stems, colors) with rarity system
 **Requires**: Art assets (10 grayscale caps, 10 grayscale stems)
 
-**Prerequisite** (from foundation audit, 2026-09-02): The current `MushroomType` enum + `MushroomSpriteData` switch-statement will not scale to 1,600 combos. Before this phase, replace the enum with `int` indices into cap/stem/color arrays, rework `MushroomSpriteData` to hold `Sprite[]` arrays keyed by index, and rewrite `MushroomData.Generate` to (a) roll a weighted rarity tier, (b) roll a random component within that tier for each of cap/stem/color, (c) compute overall rarity. `EntityNamespace.Mushroom` is already wired into `ProceduralRNG` (foundation audit PR) so a change in mushroom roll count won't shift future entity kinds' streams.
+**Prep landed** (feature/mushroom-component-shape, 2026-09-02): `MushroomData` now carries `capIndex/stemIndex/colorIndex/capRarity/stemRarity/colorRarity/overallRarity`; `Rarity` enum defined (`Common=1..Anomaly=5`); `MushroomPresets` maps the 3 legacy types to preset component tuples so today's mushrooms populate the new fields with identical UI output. `MushroomSpriteData.GetSprite(MushroomData)` overload picks sprites by component (falls back to type for anything outside the shipped presets). `EntityNamespace.Mushroom = 0` in `ProceduralRNG` guarantees that adding rarity rolls in Phase 2 won't shift RNG streams for future entity kinds.
 
-1. **5-Tier Rarity System**
-   ```
-   1. Common      - ~50% spawn chance
-   2. Uncommon    - ~30% spawn chance
-   3. Rare        - ~15% spawn chance
-   4. Very Rare   - ~4% spawn chance
-   5. Anomaly     - ~1% spawn chance
-   ```
-   - Each cap, stem, AND color has its own rarity tier
-   - RNG rolls against weighted probabilities to select components
-   - Common components spawn frequently, Anomalies are extremely rare
-
-2. **Combined Rarity Calculation**
-   - Overall mushroom rarity = simple average of component rarities
-   - Example: Common Cap (1) + Very Rare Stem (4) + Common Color (1) = (1+4+1)/3 = 2 -> Uncommon
-   - Rounded to nearest tier
-   - Makes finding all-rare combinations extremely exciting
-
-3. **Replace MushroomType enum with component struct**
-   ```csharp
-   public struct MushroomData {
-       public int capType;        // Index into caps array
-       public int stemType;       // Index into stems array
-       public int colorVariant;   // Index into colors array
-       public Rarity capRarity;   // Rarity of the cap
-       public Rarity stemRarity;  // Rarity of the stem
-       public Rarity colorRarity; // Rarity of the color
-       public Rarity overallRarity; // Calculated combined rarity
-   }
-
-   public enum Rarity { Common=1, Uncommon=2, Rare=3, VeryRare=4, Anomaly=5 }
-   ```
-
-4. **Create indexed sprite arrays with rarity metadata**
-   ```csharp
-   [System.Serializable]
-   public class CapData {
-       public Sprite sprite;
-       public Rarity rarity;
-       public string adjective; // e.g., "Spotted"
-   }
-   ```
-
-5. **Weighted RNG for rarity-based selection**
-   - Roll RNG -> get rarity tier based on weighted probability
-   - Roll RNG again -> select random component within that tier
-
-**Files to modify**:
-- `Assets/Scripts/Data/MushroomData.cs`
-- `Assets/Scripts/Data/MushroomSpriteData.cs`
-- `Assets/Scripts/Rendering/MushroomGenerator.cs`
-
-**New files**:
-- `Assets/Scripts/Data/Rarity.cs` (enum + utility methods)
+**What Phase 2 still needs**:
+1. **Art assets** — 10 cap + 10 stem grayscale sprites (see "Art Assets Required" below), registered as `Sprite[]` arrays on `MushroomSpriteData`.
+2. **16-color palette** — colour definitions + `SpriteRenderer.color` tint applied per instance.
+3. **Rarity-driven rolls** — rewrite `MushroomData.Generate` to roll cap/stem/color/rarity components directly. Weighted tier probabilities: Common ~50%, Uncommon ~30%, Rare ~15%, Very Rare ~4%, Anomaly ~1%. Overall rarity = round(average of component rarities).
+4. **Name generator** — combine `[cap_adjective] + [color_name] + [stem_name]` word lists (see "Art Assets Required" below for suggested lists).
+5. **UI wiring** — update `MushroomData.GetName()`, `GetRarity()`, `GetRarityColor()` to read from component fields instead of the legacy `MushroomType` switch. `InfoWindowUI` and rarity-color mapping follow.
 
 ---
 
@@ -341,22 +141,26 @@ Currently `MushroomGenerator`, `MouseInteractionController`, and camera code hav
 
 ---
 
-### Phase 5: Terrain Foundation
-**Goal**: Procedural terrain types affecting mushroom spawns
+### Phase 5: Biomes / Terrain Types
+**Goal**: Procedural biome regions affecting mushroom spawns, foliage, ambient art. Coordinates with Phase 0.75 — biome type can drive terrain-height parameters (rolling hills for "Pennsylvania-style" temperate biome, flat for plains, etc.).
 
-1. **Create TerrainData struct**
+1. **Create `BiomeData` / `IBiomeProvider`**
    - Types: Forest, Meadow, Swamp, Rocky, etc.
-   - Uses world seed for determinism
-   - Affects mushroom spawn rates/types per biome
+   - Deterministic from world seed (Voronoi cells or noise-based regions)
+   - Named "namespaces" independent from `EntityNamespace` (biome selects RNG streams for spawn rolls)
 
-2. **Create TerrainGenerator**
-   - Larger-scale procedural generation (biomes span many sectors)
-   - Noise-based for smooth transitions
-   - Influences MushroomData generation
+2. **Biome-driven mushroom mix**
+   - Per-biome spawn-rate multiplier + component-weight overrides
+   - Border blending (partial spawn probability at biome edges)
+
+3. **Optional biome-driven terrain profile**
+   - Each biome supplies `HeightmapTerrainProvider` parameters (amplitude, frequency, octaves)
+   - Terrain provider composes biome sample + noise to produce final tile height
 
 **New files**:
-- `Assets/Scripts/Data/TerrainData.cs`
-- `Assets/Scripts/Rendering/TerrainGenerator.cs`
+- `Assets/Scripts/Data/BiomeData.cs`
+- `Assets/Scripts/Core/IBiomeProvider.cs`
+- `Assets/Scripts/Rendering/BiomeGenerator.cs` (if visualization needed)
 
 ---
 
@@ -389,16 +193,6 @@ Currently `MushroomGenerator`, `MouseInteractionController`, and camera code hav
 
 ## Verification Plan
 
-### After Phase 1 (World Seeds):
-1. Launch game -> Main Menu appears, theme music plays and loops
-2. Click "New Generation" -> enter world name -> game loads, music stops
-3. Navigate to (0,0) and note which mushrooms exist
-4. Return to Main Menu -> music resumes, create second world
-5. Navigate to (0,0) in new world -> mushrooms should be DIFFERENT
-6. Load first world -> mushrooms at (0,0) should be SAME as before
-7. Quit and relaunch -> "Continue" loads last world correctly
-8. Camera position persists between sessions
-
 ### After Phase 2+3 (Components):
 1. Verify 10x10x16 = 1600 possible combinations generate correctly
 2. Same coords + same seed = same mushroom (determinism)
@@ -413,13 +207,15 @@ Currently `MushroomGenerator`, `MouseInteractionController`, and camera code hav
 
 ## Estimated Scope
 
-| Phase | Complexity | Files Changed/Added |
-|-------|------------|---------------------|
-| Phase 1: World Seeds | Medium | 6 new, 2 modified, 1 new scene |
-| Phase 2: Components | Medium | 3 modified, 1 new |
-| Phase 3: Multi-Layer | Medium | 2 modified, 1 prefab |
-| Phase 4: Journal | Medium | 3 new files |
-| Phase 5: Terrain | Medium-High | 2+ new files |
-| Phase 6: NPCs | High | Multiple systems |
+| Phase | Complexity | Status |
+|-------|------------|--------|
+| Phase 0.5: Isometric Overhaul | Medium | Shipped |
+| Phase 1: World Seeds & Main Menu | Medium | Shipped |
+| Phase 0.75: Terrain Height Generation | Medium-High | Pending — depends on slope art |
+| Phase 2: Component-Based Mushrooms | Medium | Data shape prepped; needs art + rarity rolls |
+| Phase 3: Multi-Layer Rendering | Medium | Pending — depends on Phase 2 |
+| Phase 4: Journal & Favorites | Medium | Pending |
+| Phase 5: Biomes / Terrain Types | Medium-High | Pending — coordinate with Phase 0.75 |
+| Phase 6: NPCs & Advanced Features | High | Pending |
 
-The refactoring is incremental - each phase delivers working functionality before the next begins.
+Phases are incremental — each delivers working functionality before the next begins.

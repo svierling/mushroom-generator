@@ -11,6 +11,19 @@ public struct MushroomData
     public MushroomType type;
     public Vector2Int tileCoords;
 
+    // Component shape landed in this PR as minimal prep for ROADMAP Phase 2.
+    // Populated from a preset lookup on the current 3 types today; Phase 2
+    // will roll these independently against a 10×10×16 art set with rarity
+    // weights, and <see cref="type"/> will become an aggregate label instead
+    // of a driver of these values.
+    public int capIndex;
+    public int stemIndex;
+    public int colorIndex;
+    public Rarity capRarity;
+    public Rarity stemRarity;
+    public Rarity colorRarity;
+    public Rarity overallRarity;
+
     /// <summary>
     /// Types of mushrooms with different rarities.
     /// </summary>
@@ -69,6 +82,17 @@ public struct MushroomData
             data.type = MushroomType.Chanterelle;
         else
             data.type = MushroomType.Bolete;
+
+        // Component indices + rarities via preset lookup. Deterministic given
+        // type, so RNG parity is preserved (no additional rolls consumed).
+        MushroomPresets.Preset preset = MushroomPresets.For(data.type);
+        data.capIndex      = preset.capIndex;
+        data.stemIndex     = preset.stemIndex;
+        data.colorIndex    = preset.colorIndex;
+        data.capRarity     = preset.capRarity;
+        data.stemRarity    = preset.stemRarity;
+        data.colorRarity   = preset.colorRarity;
+        data.overallRarity = preset.overallRarity;
 
         return data;
     }
