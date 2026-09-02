@@ -8,6 +8,7 @@ SpriteAtlas:
   m_PrefabAsset: {fileID: 0}
   m_Name: Mushrooms
   m_EditorData:
+    serializedVersion: 2
     textureSettings:
       serializedVersion: 2
       anisoLevel: 1
@@ -19,7 +20,20 @@ SpriteAtlas:
       readable: 0
       crunchedCompression: 0
       sRGB: 1
-    platformSettings: []
+    platformSettings:
+    - serializedVersion: 4
+      m_BuildTarget: DefaultTexturePlatform
+      m_MaxTextureSize: 2048
+      m_ResizeAlgorithm: 0
+      m_TextureFormat: -1
+      m_TextureCompression: 0
+      m_CompressionQuality: 50
+      m_CrunchedCompression: 0
+      m_AllowsAlphaSplitting: 0
+      m_Overridden: 0
+      m_IgnorePlatformSupport: 0
+      m_AndroidETC2FallbackOverride: 0
+      m_ForceMaximumCompressionQuality_BC6H_BC7: 0
     packingSettings:
       serializedVersion: 2
       padding: 4
@@ -28,22 +42,28 @@ SpriteAtlas:
       enableRotation: 0
       enableTightPacking: 0
       enableAlphaDilation: 1
+    secondaryTextureSettings: {}
     variantMultiplier: 1
     packables:
     - {fileID: 21300000, guid: 170f76bf7dada2f4e8d779e6348df20e, type: 3}
     - {fileID: 21300000, guid: d80b7747e10402040a2164d792f0c6a0, type: 3}
     - {fileID: 21300000, guid: cb3457966b2437048a797879ccf0a7cf, type: 3}
-    totalSpriteSurfaceArea: 0
     bindAsDefault: 1
-    storedHash:
-      serializedVersion: 2
-      Hash: 00000000000000000000000000000000
-    hashOfImportedAtlas:
-      serializedVersion: 2
-      Hash: 00000000000000000000000000000000
+    isAtlasV2: 0
+    cachedData: {fileID: 0}
+    packedSpriteRenderDataKeys:
+    - cb3457966b2437048a797879ccf0a7cf: 21300000
+    - d80b7747e10402040a2164d792f0c6a0: 21300000
+    - 170f76bf7dada2f4e8d779e6348df20e: 21300000
   m_MasterAtlas: {fileID: 0}
-  m_PackedSprites: []
-  m_PackedSpriteNamesToIndex: []
+  m_PackedSprites:
+  - {fileID: 21300000, guid: cb3457966b2437048a797879ccf0a7cf, type: 3}
+  - {fileID: 21300000, guid: d80b7747e10402040a2164d792f0c6a0, type: 3}
+  - {fileID: 21300000, guid: 170f76bf7dada2f4e8d779e6348df20e, type: 3}
+  m_PackedSpriteNamesToIndex:
+  - MushroomYellow
+  - MushroomGreen
+  - MushroomRed
   m_RenderDataMap: {}
   m_Tag: Mushrooms
   m_IsVariant: 0
