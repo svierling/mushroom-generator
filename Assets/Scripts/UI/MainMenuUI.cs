@@ -213,7 +213,9 @@ public class MainMenuUI : MonoBehaviour
             return;
         }
 
-        // Create and load the new world
+        // Create and load the new world (defaults to PlotSize.Small — the
+        // player-facing size selector was pulled; bring it back if plot size
+        // ever becomes a user choice again).
         var newWorld = WorldManager.Instance.CreateNewWorld(worldName);
         WorldManager.Instance.SetCurrentWorld(newWorld);
 

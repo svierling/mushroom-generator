@@ -131,6 +131,12 @@ public class MushroomGenerator : MonoBehaviour
         {
             for (int worldTileY = minTileY; worldTileY <= maxTileY; worldTileY++)
             {
+                // Skip anything past the plot boundary. Off-plot tiles have
+                // no ground, no mushrooms, and no interaction — the cliff
+                // face rendered by GroundMeshRenderer visually terminates
+                // the world at these coordinates.
+                if (!WorldBounds.Contains(worldTileX, worldTileY)) continue;
+
                 // Cheap iso-visibility test: project the tile and reject if
                 // the projection falls outside the padded camera rect.
                 TerrainSample sample = TerrainService.SampleAt(worldTileX, worldTileY);

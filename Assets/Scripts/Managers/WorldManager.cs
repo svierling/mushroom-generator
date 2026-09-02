@@ -45,7 +45,9 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Load the save data file from disk.
+    /// Load the save data file from disk. Migrates each world's payload up to
+    /// <see cref="WorldSaveData.CURRENT_SCHEMA_VERSION"/> before use so
+    /// downstream code never sees legacy field defaults.
     /// </summary>
     private void LoadSaveData()
     {
@@ -66,6 +68,16 @@ public class WorldManager : MonoBehaviour
         {
             saveDataList = new WorldSaveDataList();
         }
+
+        // Migrate all worlds up to the current schema (fills in defaults for
+        // fields introduced by later versions, e.g. plotSideTiles).
+        if (saveDataList != null && saveDataList.worlds != null)
+        {
+            for (int i = 0; i < saveDataList.worlds.Count; i++)
+            {
+                saveDataList.worlds[i]?.Migrate();
+            }
+        }
     }
 
     /// <summary>
@@ -85,11 +97,11 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Create a new world with the given name.
+    /// Create a new world with the given name and plot size (default Small).
     /// </summary>
-    public WorldSaveData CreateNewWorld(string worldName)
+    public WorldSaveData CreateNewWorld(string worldName, PlotSize plotSize = PlotSize.Small)
     {
-        var newWorld = WorldSaveData.CreateNew(worldName);
+        var newWorld = WorldSaveData.CreateNew(worldName, plotSize);
         saveDataList.worlds.Add(newWorld);
         SaveDataToDisk();
         return newWorld;
