@@ -8,7 +8,7 @@ public static class GameVersion
     /// Current game version.
     /// Update this when releasing new versions.
     /// </summary>
-    public const string Version = "1.1.0";
+    public const string Version = "1.2.0";
 
     /// <summary>
     /// Version with 'v' prefix for display purposes.
