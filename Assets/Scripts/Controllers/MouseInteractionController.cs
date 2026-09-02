@@ -4,7 +4,8 @@ using UnityEngine.EventSystems;
 
 /// <summary>
 /// Handles mouse position tracking, hover detection, and click events.
-/// Converts screen coordinates to sector coordinates matching C++ implementation.
+/// Converts screen coordinates to tile coordinates matching C++ implementation
+/// (the C++ port called tiles "sectors").
 /// Implements hover highlighting and click detection from MushroomGenerator.cpp lines 198-229.
 /// Clicking outside mushrooms and UI closes the info window.
 /// </summary>
@@ -43,7 +44,7 @@ public class MouseInteractionController : MonoBehaviour
     private InputActions inputActions;
     private UnityEngine.InputSystem.InputAction clickAction;
 
-    private Vector2Int currentHoveredSector = Vector2Int.zero;
+    private Vector2Int currentHoveredTile = Vector2Int.zero;
     private bool isHoveringMushroom = false;
 
     private void Awake()
@@ -103,7 +104,7 @@ public class MouseInteractionController : MonoBehaviour
         );
 
         isHoveringMushroom = false;
-        currentHoveredSector = Vector2Int.zero;
+        currentHoveredTile = Vector2Int.zero;
 
         // Height walk-down: try the tallest possible height first, project the
         // cursor down to that height's tile, check if terrain there actually is
@@ -122,8 +123,8 @@ public class MouseInteractionController : MonoBehaviour
             }
         }
 
-        int centerSectorX = Mathf.FloorToInt(pickedTileF.x);
-        int centerSectorY = Mathf.FloorToInt(pickedTileF.y);
+        int centerTileX = Mathf.FloorToInt(pickedTileF.x);
+        int centerTileY = Mathf.FloorToInt(pickedTileF.y);
 
         // Scan a small tile neighborhood — a mushroom whose base is on a tile
         // behind the cursor can still overlap the cursor because its sprite
@@ -132,21 +133,21 @@ public class MouseInteractionController : MonoBehaviour
         {
             for (int offsetY = -MUSHROOM_SEARCH_RADIUS; offsetY <= MUSHROOM_SEARCH_RADIUS; offsetY++)
             {
-                int checkSectorX = centerSectorX + offsetX;
-                int checkSectorY = centerSectorY + offsetY;
+                int checkTileX = centerTileX + offsetX;
+                int checkTileY = centerTileY + offsetY;
 
-                MushroomData data = MushroomData.Generate((uint)checkSectorX, (uint)checkSectorY);
+                MushroomData data = MushroomData.Generate((uint)checkTileX, (uint)checkTileY);
                 if (!data.exists) continue;
 
-                TerrainSample tileSample = TerrainService.SampleAt(checkSectorX, checkSectorY);
-                Vector3 spriteCenter = IsoProjection.WorldToUnity(checkSectorX, checkSectorY, tileSample.height)
+                TerrainSample tileSample = TerrainService.SampleAt(checkTileX, checkTileY);
+                Vector3 spriteCenter = IsoProjection.WorldToUnity(checkTileX, checkTileY, tileSample.height)
                                      + new Vector3(0f, MUSHROOM_BASE_OFFSET_UNITS, 0f);
 
                 if (Mathf.Abs(worldPos.x - spriteCenter.x) < SPRITE_HALF_WIDTH_UNITS &&
                     Mathf.Abs(worldPos.y - spriteCenter.y) < SPRITE_HALF_HEIGHT_UNITS)
                 {
                     isHoveringMushroom = true;
-                    currentHoveredSector = new Vector2Int(checkSectorX, checkSectorY);
+                    currentHoveredTile = new Vector2Int(checkTileX, checkTileY);
                     goto FoundMushroom;
                 }
             }
@@ -157,15 +158,15 @@ public class MouseInteractionController : MonoBehaviour
         // Debug output
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
-            Debug.Log($"Mouse tile: ({currentHoveredSector.x}, {currentHoveredSector.y}) | Mushroom exists: {isHoveringMushroom}");
+            Debug.Log($"Mouse tile: ({currentHoveredTile.x}, {currentHoveredTile.y}) | Mushroom exists: {isHoveringMushroom}");
         }
 
         // Update highlight rectangle — position it at the mushroom's iso sprite
         // center so the yellow border frames the sprite regardless of zoom.
         if (isHoveringMushroom)
         {
-            TerrainSample hoverSample = TerrainService.SampleAt(currentHoveredSector.x, currentHoveredSector.y);
-            Vector3 highlightWorldPos = IsoProjection.WorldToUnity(currentHoveredSector.x, currentHoveredSector.y, hoverSample.height)
+            TerrainSample hoverSample = TerrainService.SampleAt(currentHoveredTile.x, currentHoveredTile.y);
+            Vector3 highlightWorldPos = IsoProjection.WorldToUnity(currentHoveredTile.x, currentHoveredTile.y, hoverSample.height)
                                       + new Vector3(0f, MUSHROOM_BASE_OFFSET_UNITS, 0f);
             highlightRect.Show(highlightWorldPos);
         }
@@ -182,14 +183,14 @@ public class MouseInteractionController : MonoBehaviour
     /// </summary>
     private void OnClick(UnityEngine.InputSystem.InputAction.CallbackContext context)
     {
-        Debug.Log($"Click detected at sector ({currentHoveredSector.x}, {currentHoveredSector.y}) | Hovering mushroom: {isHoveringMushroom}");
+        Debug.Log($"Click detected at tile ({currentHoveredTile.x}, {currentHoveredTile.y}) | Hovering mushroom: {isHoveringMushroom}");
 
         if (isHoveringMushroom)
         {
             // Select the hovered mushroom
             selectionManager.SelectMushroom(
-                (uint)currentHoveredSector.x,
-                (uint)currentHoveredSector.y
+                (uint)currentHoveredTile.x,
+                (uint)currentHoveredTile.y
             );
         }
         else

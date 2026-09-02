@@ -24,9 +24,17 @@ public static class IsoProjection
     public const int HEIGHT_SORT_WEIGHT = 1;
 
     // Sprite sort spacing per iso diagonal step. Unity's Renderer.sortingOrder
-    // is Int16, so anything above 32767 or below -32768 clamps. Multiplier 10
-    // gives ±3200 tile-sum headroom before overflow — 32x the previous 100.
+    // is Int16 (±32767), so anything outside that clamps silently. Multiplier
+    // 10 gives ~±3277 (x+y) headroom before overflow; SortOrder() clamps
+    // beyond that so far-flung tiles degrade gracefully (they lose
+    // fine-grained depth ordering with each other but still sort correctly
+    // against nearby tiles).
     public const int SORT_ORDER_PER_DIAGONAL = 10;
+
+    // Safe int output range that survives Int16 truncation when Unity assigns
+    // it to sortingOrder. Leave a bit of headroom for the height weight.
+    private const int SORT_ORDER_MIN = short.MinValue + 16;
+    private const int SORT_ORDER_MAX = short.MaxValue - 16;
 
     private const float TILE_HALF_WIDTH_UNITS  = (TILE_WIDTH_PIXELS  / 2f) / PIXELS_PER_UNIT;
     private const float TILE_HALF_HEIGHT_UNITS = (TILE_HEIGHT_PIXELS / 2f) / PIXELS_PER_UNIT;
@@ -76,9 +84,17 @@ public static class IsoProjection
     /// <summary>
     /// Sort order for a sprite at a given world tile + height. Higher (x + y)
     /// draws in front; height breaks ties within the same diagonal.
+    ///
+    /// Result is clamped to the Int16 range so extreme world coordinates
+    /// don't wrap around into wrong sort orders — beyond ~±3277 diagonal
+    /// distance from origin, tiles all sort at the clamp value (still
+    /// correctly against nearer tiles, just not against each other).
     /// </summary>
     public static int SortOrder(float worldX, float worldY, float height = 0f)
     {
-        return -(int)((worldX + worldY) * SORT_ORDER_PER_DIAGONAL + height * HEIGHT_SORT_WEIGHT);
+        float raw = -((worldX + worldY) * SORT_ORDER_PER_DIAGONAL + height * HEIGHT_SORT_WEIGHT);
+        if (raw <= SORT_ORDER_MIN) return SORT_ORDER_MIN;
+        if (raw >= SORT_ORDER_MAX) return SORT_ORDER_MAX;
+        return (int)raw;
     }
 }

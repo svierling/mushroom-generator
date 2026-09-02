@@ -53,6 +53,10 @@ public class GroundMeshRenderer : MonoBehaviour
     private readonly List<Vector3> varVertexBuf   = new List<Vector3>(1024);
     private readonly List<Vector2> varUvBuf       = new List<Vector2>(1024);
     private readonly List<int>     varTriangleBuf = new List<int>(1536);
+    // Merged UV / remapped variation triangle buffers — hoisted from RebuildMesh
+    // to avoid the per-regen List allocations we used to make there.
+    private readonly List<Vector2> mergedUvBuf         = new List<Vector2>(9216);
+    private readonly List<int>     remappedVarTrisBuf  = new List<int>(1536);
 
     private void Awake()
     {
@@ -149,6 +153,8 @@ public class GroundMeshRenderer : MonoBehaviour
         varVertexBuf.Clear();
         varUvBuf.Clear();
         varTriangleBuf.Clear();
+        mergedUvBuf.Clear();
+        remappedVarTrisBuf.Clear();
 
         float halfW = IsoProjection.TILE_WIDTH_PIXELS  * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 1.0
         float halfH = IsoProjection.TILE_HEIGHT_PIXELS * 0.5f / IsoProjection.PIXELS_PER_UNIT; // 0.5
@@ -216,17 +222,16 @@ public class GroundMeshRenderer : MonoBehaviour
         // remapped into the merged range.
         int fillVertCount = vertexBuf.Count;
         List<Vector3> allVerts = vertexBuf;
-        List<Vector2> allUvs = new List<Vector2>(fillVertCount + varVertexBuf.Count);
         if (wantVariation)
         {
             allVerts.AddRange(varVertexBuf);
-            for (int i = 0; i < fillVertCount; i++) allUvs.Add(Vector2.zero);
-            allUvs.AddRange(varUvBuf);
+            for (int i = 0; i < fillVertCount; i++) mergedUvBuf.Add(Vector2.zero);
+            mergedUvBuf.AddRange(varUvBuf);
         }
 
         mesh.Clear();
         mesh.SetVertices(allVerts);
-        if (wantVariation) mesh.SetUVs(0, allUvs);
+        if (wantVariation) mesh.SetUVs(0, mergedUvBuf);
 
         int submeshCount = 1;
         if (wantVariation) submeshCount++;
@@ -237,14 +242,14 @@ public class GroundMeshRenderer : MonoBehaviour
         mesh.SetTriangles(triangleBuf, submesh: submesh++);
         if (wantVariation)
         {
-            List<int> remappedVarTris = new List<int>(varTriangleBuf.Count);
             for (int i = 0; i < varTriangleBuf.Count; i++)
-                remappedVarTris.Add(varTriangleBuf[i] + fillVertCount);
-            mesh.SetTriangles(remappedVarTris, submesh: submesh++);
+                remappedVarTrisBuf.Add(varTriangleBuf[i] + fillVertCount);
+            mesh.SetTriangles(remappedVarTrisBuf, submesh: submesh++);
         }
         if (showBorders)
         {
-            mesh.SetIndices(lineBuf.ToArray(), MeshTopology.Lines, submesh);
+            // List<int> overload avoids the per-regen array copy that ToArray() used to make.
+            mesh.SetIndices(lineBuf, MeshTopology.Lines, submesh);
         }
 
         mesh.RecalculateBounds();

@@ -27,11 +27,11 @@ public class RNGTest : MonoBehaviour
         Debug.Log("");
 
         // Test known coordinates
-        TestSector(0, 0);
-        TestSector(10, 5);
-        TestSector(255, 255);
-        TestSector(1000, 1000);
-        TestSector(100, 200);
+        TestTile(0, 0);
+        TestTile(10, 5);
+        TestTile(255, 255);
+        TestTile(1000, 1000);
+        TestTile(100, 200);
 
         Debug.Log("");
         Debug.Log("=== TEST COMPLETE ===");
@@ -45,11 +45,11 @@ public class RNGTest : MonoBehaviour
         }
     }
 
-    private void TestSector(uint x, uint y)
+    private void TestTile(uint x, uint y)
     {
         var mushroom = MushroomData.Generate(x, y);
 
-        string result = $"Sector ({x,4},{y,4}): ";
+        string result = $"Tile ({x,4},{y,4}): ";
 
         if (mushroom.exists)
         {
@@ -69,15 +69,15 @@ public class RNGTest : MonoBehaviour
     /// </summary>
     private void TestMushroomDistribution()
     {
-        Debug.Log("=== DISTRIBUTION TEST (1000 sectors) ===");
+        Debug.Log("=== DISTRIBUTION TEST (1000 tiles) ===");
 
-        int totalSectors = 1000;
+        int totalTiles = 1000;
         int mushroomsFound = 0;
         int bolete = 0;
         int roundhead = 0;
         int chanterelle = 0;
 
-        for (uint i = 0; i < totalSectors; i++)
+        for (uint i = 0; i < totalTiles; i++)
         {
             var mushroom = MushroomData.Generate(i, i);
 
@@ -100,8 +100,8 @@ public class RNGTest : MonoBehaviour
             }
         }
 
-        float spawnRate = (float)mushroomsFound / totalSectors * 100f;
-        Debug.Log($"Mushrooms found: {mushroomsFound}/{totalSectors} ({spawnRate:F2}%)");
+        float spawnRate = (float)mushroomsFound / totalTiles * 100f;
+        Debug.Log($"Mushrooms found: {mushroomsFound}/{totalTiles} ({spawnRate:F2}%)");
         Debug.Log($"Expected spawn rate: ~1.43% (1/70)");
         Debug.Log("");
 

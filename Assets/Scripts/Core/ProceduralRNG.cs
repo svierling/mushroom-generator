@@ -22,14 +22,31 @@ public class ProceduralRNG
     /// Different world seeds produce different results for the same coordinates.
     /// </summary>
     /// <param name="worldSeed">Unique seed for this world/generation</param>
-    /// <param name="x">Sector X coordinate</param>
-    /// <param name="y">Sector Y coordinate</param>
+    /// <param name="x">Tile X coordinate</param>
+    /// <param name="y">Tile Y coordinate</param>
     public ProceduralRNG(uint worldSeed, uint x, uint y)
+        : this(worldSeed, x, y, EntityNamespace.Mushroom) { }
+
+    /// <summary>
+    /// Initialize RNG with world seed, spatial coordinates, and an entity
+    /// namespace. Different namespaces produce independent RNG streams at the
+    /// same (worldSeed, x, y) so mushrooms and trees don't share rolls.
+    ///
+    /// <see cref="EntityNamespace.Mushroom"/> is 0, so its hash contribution
+    /// is a no-op — pre-namespacing worlds and mushroom-namespace worlds
+    /// produce bit-identical RNG streams.
+    /// </summary>
+    public ProceduralRNG(uint worldSeed, uint x, uint y, EntityNamespace ns)
     {
-        // Combine world seed with coordinates for unique per-world generation
-        // XOR the world seed with coordinates before applying the original formula
+        // Combine world seed with coordinates for unique per-world generation.
+        // XOR the world seed with coordinates before applying the original formula.
         uint seedX = x ^ worldSeed;
         uint seedY = y ^ (worldSeed >> 16 | worldSeed << 16); // Rotate world seed for Y
+        // Namespace byte splayed across both halves so it changes the hash
+        // even when only the low or high bits of coords are non-zero.
+        uint nsMix = (uint)ns * 0x9E3779B1u;
+        seedX ^= nsMix;
+        seedY ^= (nsMix << 16) | (nsMix >> 16);
         nProcGen = ((seedX & 0xFFFF) << 16) | (seedY & 0xFFFF);
     }
 

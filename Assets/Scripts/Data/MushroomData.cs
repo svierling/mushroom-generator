@@ -1,14 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// Data structure representing a mushroom at a specific world sector.
+/// Data structure representing a mushroom at a specific world tile.
 /// Handles procedural generation using deterministic RNG based on coordinates.
+/// (Historical note: the C++ port referred to tiles as "sectors".)
 /// </summary>
 public struct MushroomData
 {
     public bool exists;
     public MushroomType type;
-    public Vector2Int sectorCoords;
+    public Vector2Int tileCoords;
 
     /// <summary>
     /// Types of mushrooms with different rarities.
@@ -21,30 +22,34 @@ public struct MushroomData
     }
 
     /// <summary>
-    /// Generate mushroom data for a specific world sector using procedural generation.
+    /// Generate mushroom data for a specific world tile using procedural generation.
     /// Uses the world seed from WorldManager for different results per world.
     /// Falls back to coordinate-only seeding if no world is loaded (backwards compatibility).
     /// </summary>
-    /// <param name="sectorX">World X coordinate of the sector</param>
-    /// <param name="sectorY">World Y coordinate of the sector</param>
+    /// <param name="tileX">World X coordinate of the tile</param>
+    /// <param name="tileY">World Y coordinate of the tile</param>
     /// <returns>MushroomData containing existence and type information</returns>
-    public static MushroomData Generate(uint sectorX, uint sectorY)
+    public static MushroomData Generate(uint tileX, uint tileY)
     {
-        // Create RNG with world seed (if available) and sector coordinates
+        // Create RNG with world seed (if available) and tile coordinates,
+        // namespaced to Mushroom so future entity kinds (trees, ores, mobs)
+        // get independent RNG streams for the same (x, y, worldSeed).
         ProceduralRNG rng;
         if (WorldManager.Instance != null && WorldManager.Instance.HasActiveWorld)
         {
-            rng = new ProceduralRNG(WorldManager.Instance.WorldSeed, sectorX, sectorY);
+            rng = new ProceduralRNG(WorldManager.Instance.WorldSeed, tileX, tileY, EntityNamespace.Mushroom);
         }
         else
         {
-            // Fallback to original behavior for backwards compatibility
-            rng = new ProceduralRNG(sectorX, sectorY);
+            // Fallback to original behavior for backwards compatibility.
+            // Legacy constructor kept for RNGTest-style bit-for-bit C++ parity
+            // checks; production paths always take the world-seed branch above.
+            rng = new ProceduralRNG(tileX, tileY);
         }
 
         var data = new MushroomData
         {
-            sectorCoords = new Vector2Int((int)sectorX, (int)sectorY),
+            tileCoords = new Vector2Int((int)tileX, (int)tileY),
             // CRITICAL: 1 in 70 chance for mushroom to exist (matching C++)
             exists = (rng.RndInt(0, 70) == 1)
         };
