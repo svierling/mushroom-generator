@@ -145,7 +145,10 @@ public class MushroomGenerator : MonoBehaviour
                 if (!data.exists) continue;
 
                 MushroomInstance mushroom = GetFromPool();
-                Sprite sprite = spriteData.GetSprite(data.type);
+                // Component-aware lookup — identical output to GetSprite(data.type)
+                // today (all mushrooms use cap 0 / stem 0 presets), but exercises
+                // the code path Phase 2 will populate with real cap/stem arrays.
+                Sprite sprite = spriteData.GetSprite(data);
                 mushroom.Configure(worldTileX, worldTileY, sample.height, sprite);
             }
         }

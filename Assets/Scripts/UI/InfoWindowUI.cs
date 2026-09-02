@@ -107,10 +107,10 @@ public class InfoWindowUI : MonoBehaviour
     /// </summary>
     private void UpdateDisplay(MushroomData data)
     {
-        // Update sprite
+        // Update sprite (component-aware lookup — see MushroomSpriteData.GetSprite(data)).
         if (mushroomSpriteImage != null && spriteData != null)
         {
-            mushroomSpriteImage.sprite = spriteData.GetSprite(data.type);
+            mushroomSpriteImage.sprite = spriteData.GetSprite(data);
         }
 
         // Update text fields

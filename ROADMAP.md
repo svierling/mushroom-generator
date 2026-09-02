@@ -170,12 +170,11 @@ Files affected are limited to the terrain provider itself, the sprite folder, an
 
 ---
 
-### Phase 1: World Seeds & Main Menu (v1.1.0)
+### Phase 1: World Seeds & Main Menu (v1.1.0) — SHIPPED
 **Goal**: Different "generations" with unique worlds, main menu for New/Load
 **Note**: Works with current 3 mushroom types - no sprite changes needed
 
-**Prerequisite** (from foundation audit, 2026-09-02): Refactor scene bootstrap for multi-scene support.
-Currently `MushroomGenerator`, `MouseInteractionController`, and camera code have hardwired `SerializeField` refs that only resolve inside `MainScene.unity`. Loading `MainMenu → MainScene` will null-ref unless refs move to `FindFirstObjectByType<T>()` with the Inspector ref as an override, or a `GameBootstrap` MonoBehaviour re-wires them on scene load. Also ensure `WorldManager` (already `DontDestroyOnLoad`) initializes before any consumer via `[RuntimeInitializeOnLoadMethod]` or explicit script execution order.
+**Status**: Shipped. `MainMenu.unity` + `MainMenuUI` + `ReturnToMenuUI` handle scene transitions; `WorldManager` persists via `DontDestroyOnLoad`; save/load/continue all work.
 
 1. **Add World Seed to RNG**
    - Modify `ProceduralRNG` constructor to accept world seed
@@ -238,7 +237,9 @@ Currently `MushroomGenerator`, `MouseInteractionController`, and camera code hav
 **Goal**: Enable component-based mushroom generation (caps, stems, colors) with rarity system
 **Requires**: Art assets (10 grayscale caps, 10 grayscale stems)
 
-**Prerequisite** (from foundation audit, 2026-09-02): The current `MushroomType` enum + `MushroomSpriteData` switch-statement will not scale to 1,600 combos. Before this phase, replace the enum with `int` indices into cap/stem/color arrays, rework `MushroomSpriteData` to hold `Sprite[]` arrays keyed by index, and rewrite `MushroomData.Generate` to (a) roll a weighted rarity tier, (b) roll a random component within that tier for each of cap/stem/color, (c) compute overall rarity. `EntityNamespace.Mushroom` is already wired into `ProceduralRNG` (foundation audit PR) so a change in mushroom roll count won't shift future entity kinds' streams.
+**Prep landed** (feature/mushroom-component-shape, 2026-09-02): `MushroomData` now carries `capIndex/stemIndex/colorIndex/capRarity/stemRarity/colorRarity/overallRarity`; `Rarity` enum defined (`Common=1..Anomaly=5`); `MushroomPresets` maps the 3 legacy types to preset component tuples so today's mushrooms populate the new fields with identical UI output. `MushroomSpriteData.GetSprite(MushroomData)` overload picks sprites by component (falls back to type for anything outside the shipped presets). `EntityNamespace.Mushroom = 0` in `ProceduralRNG` guarantees that adding rarity rolls in Phase 2 won't shift RNG streams for future entity kinds.
+
+**What Phase 2 still needs**: (a) 10 cap + 10 stem grayscale sprites authored and registered in `MushroomSpriteData` arrays, (b) 16-color palette + tinting via `SpriteRenderer.color`, (c) rewrite `MushroomData.Generate` to roll cap/stem/color/rarity components directly (instead of picking a preset and applying it), (d) name-generator combining `[cap_adjective] + [color_name] + [stem_name]`, (e) update `GetRarity()`/`GetRarityColor()`/`GetName()` to read from the component fields instead of the `MushroomType` enum switch.
 
 1. **5-Tier Rarity System**
    ```
