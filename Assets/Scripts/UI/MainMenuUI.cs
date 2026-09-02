@@ -23,6 +23,14 @@ public class MainMenuUI : MonoBehaviour
     [SerializeField] private Button cancelNewWorldButton;
     [SerializeField] private TextMeshProUGUI newWorldErrorText;
 
+    [Header("Plot Size Selector (optional; wire in Editor for UI)")]
+    [Tooltip("Toggle for the Small plot (256×256 tiles). Optional — if none of the three toggles are wired, Medium is used as the default.")]
+    [SerializeField] private Toggle plotSizeSmallToggle;
+    [Tooltip("Toggle for the Medium plot (512×512 tiles). The default plot size.")]
+    [SerializeField] private Toggle plotSizeMediumToggle;
+    [Tooltip("Toggle for the Large plot (1024×1024 tiles).")]
+    [SerializeField] private Toggle plotSizeLargeToggle;
+
     [Header("Load World Panel")]
     [SerializeField] private GameObject loadWorldPanel;
     [SerializeField] private Transform worldListContent;
@@ -214,12 +222,24 @@ public class MainMenuUI : MonoBehaviour
         }
 
         // Create and load the new world
-        var newWorld = WorldManager.Instance.CreateNewWorld(worldName);
+        var newWorld = WorldManager.Instance.CreateNewWorld(worldName, GetSelectedPlotSize());
         WorldManager.Instance.SetCurrentWorld(newWorld);
 
         // Load gameplay scene
         StopThemeMusic();
         SceneManager.LoadScene(gameplaySceneName);
+    }
+
+    /// <summary>
+    /// Read the plot-size toggles (if wired). Falls back to Medium when no
+    /// toggle is wired or none is checked — this keeps the New World panel
+    /// working on scenes that haven't been updated to include the selector.
+    /// </summary>
+    private PlotSize GetSelectedPlotSize()
+    {
+        if (plotSizeSmallToggle != null && plotSizeSmallToggle.isOn) return PlotSize.Small;
+        if (plotSizeLargeToggle != null && plotSizeLargeToggle.isOn) return PlotSize.Large;
+        return PlotSize.Medium;
     }
 
     private void ShowNewWorldError(string message)

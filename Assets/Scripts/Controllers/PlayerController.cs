@@ -160,17 +160,29 @@ public class PlayerController : MonoBehaviour
         WorldTileX += deltaUnityX * 0.5f + deltaUnityY;
         WorldTileY += deltaUnityY - deltaUnityX * 0.5f;
 
+        // Hard-clamp against the plot boundary. This is a cliff drop-off in
+        // the design, so movement stops dead at the edge rather than pushing
+        // the character over. Camera follow / animation see the clamped
+        // position, so nothing else needs to know about the boundary.
+        Vector2 clamped = WorldBounds.Clamp(WorldTileX, WorldTileY);
+        WorldTileX = clamped.x;
+        WorldTileY = clamped.y;
+
         ApplyTransform();
         ApplyCurrentSprite(isSprinting);
     }
 
     /// <summary>
-    /// Teleport the character to the given tile. Camera catches up via deadzone follow.
+    /// Teleport the character to the given tile. Coordinates are clamped to
+    /// the plot boundary — coordinate search / minimap callers can pass
+    /// any value and this will land the character inside the plot. Camera
+    /// catches up via deadzone follow.
     /// </summary>
     public void TeleportToTile(float tileX, float tileY)
     {
-        WorldTileX = tileX;
-        WorldTileY = tileY;
+        Vector2 clamped = WorldBounds.Clamp(tileX, tileY);
+        WorldTileX = clamped.x;
+        WorldTileY = clamped.y;
         ApplyTransform();
     }
 

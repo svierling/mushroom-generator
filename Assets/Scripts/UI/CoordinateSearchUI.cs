@@ -191,21 +191,25 @@ public class CoordinateSearchUI : MonoBehaviour
     }
 
     /// <summary>
-    /// Teleport the character to the given world tile. The follow-camera
-    /// snaps on top via the deadzone-follow next frame.
+    /// Teleport the character to the given world tile. Rejects (with a red
+    /// tracker flash) coordinates that fall outside the plot boundary — the
+    /// PlayerController.TeleportToTile clamp is a safety net, but silently
+    /// clamping would be a confusing UX (typing "9999" and landing at 255).
+    /// The follow-camera snaps on top via the deadzone-follow next frame.
     /// </summary>
     private void NavigateToCoordinates(int tileX, int tileY)
     {
         if (cameraController == null || cameraController.Target == null)
             return;
 
-        cameraController.Target.TeleportToTile(tileX, tileY);
-
-        // Flash coordinate tracker green to indicate successful navigation
-        if (coordinateTracker != null)
+        if (!WorldBounds.Contains(tileX, tileY))
         {
-            coordinateTracker.FlashGreen();
+            if (coordinateTracker != null) coordinateTracker.FlashRed();
+            return;
         }
+
+        cameraController.Target.TeleportToTile(tileX, tileY);
+        if (coordinateTracker != null) coordinateTracker.FlashGreen();
     }
 
     /// <summary>

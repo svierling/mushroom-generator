@@ -17,7 +17,10 @@ public class CoordinateTrackerUI : MonoBehaviour
 
     [Header("Flash Settings")]
     [SerializeField] private Color normalColor = Color.white;
+    [Tooltip("Color used by FlashGreen — successful teleport.")]
     [SerializeField] private Color flashColor = Color.green;
+    [Tooltip("Color used by FlashRed — rejected navigation (e.g. coordinates outside the plot).")]
+    [SerializeField] private Color flashRejectColor = new Color(1f, 0.35f, 0.35f, 1f);
     [SerializeField] private float flashDuration = 1.5f;
 
     private bool isFlashing = false;
@@ -64,35 +67,33 @@ public class CoordinateTrackerUI : MonoBehaviour
 
     /// <summary>
     /// Flash the coordinate display green briefly to indicate successful navigation.
-    /// Called by CoordinateSearchUI when Enter is pressed.
+    /// Called by CoordinateSearchUI when Enter is pressed and coordinates are valid.
     /// </summary>
-    public void FlashGreen()
+    public void FlashGreen() => Flash(flashColor);
+
+    /// <summary>
+    /// Flash the coordinate display red briefly to indicate rejected navigation
+    /// (e.g. the entered coordinates fell outside the plot boundary).
+    /// </summary>
+    public void FlashRed() => Flash(flashRejectColor);
+
+    private void Flash(Color color)
     {
         if (!isFlashing)
         {
-            StartCoroutine(FlashGreenCoroutine());
+            StartCoroutine(FlashCoroutine(color));
         }
     }
 
-    /// <summary>
-    /// Coroutine that handles the green flash animation.
-    /// </summary>
-    private IEnumerator FlashGreenCoroutine()
+    private IEnumerator FlashCoroutine(Color color)
     {
         if (coordinateText == null)
             yield break;
 
         isFlashing = true;
-
-        // Flash to green
-        coordinateText.color = flashColor;
-
-        // Wait for flash duration
+        coordinateText.color = color;
         yield return new WaitForSeconds(flashDuration);
-
-        // Return to normal color
         coordinateText.color = normalColor;
-
         isFlashing = false;
     }
 }

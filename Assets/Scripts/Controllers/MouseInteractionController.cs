@@ -136,6 +136,10 @@ public class MouseInteractionController : MonoBehaviour
                 int checkTileX = centerTileX + offsetX;
                 int checkTileY = centerTileY + offsetY;
 
+                // Off-plot tiles have no mushrooms to pick even if generation
+                // would place one there.
+                if (!WorldBounds.Contains(checkTileX, checkTileY)) continue;
+
                 MushroomData data = MushroomData.Generate((uint)checkTileX, (uint)checkTileY);
                 if (!data.exists) continue;
 
