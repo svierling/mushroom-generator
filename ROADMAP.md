@@ -6,7 +6,9 @@ This document outlines the architectural plan for scaling the Mushroom Generator
 
 ## Executive Summary
 
-The Phase 0.5 isometric overhaul and Phase 1 world/main-menu work have shipped; the game is a playable isometric explorer with save/load and world seeds. Recent foundation-optimizations work landed sprite atlasing, sort-order safety, RNG entity namespacing, tile-terminology cleanup, and save schema versioning. The current focus is on content scale-up: real terrain generation (Phase 0.75), 1600-combo component-based mushrooms (Phase 2 — data shape is prepped), and eventually resources / foliage / mobs / NPCs.
+The Phase 0.5 isometric overhaul and Phase 1 world/main-menu work have shipped (v1.2.0); the game is a playable isometric explorer with save/load and world seeds. Recent foundation-optimizations work landed sprite atlasing, sort-order safety, RNG entity namespacing, tile-terminology cleanup, and save schema versioning.
+
+**Next up**: shape the game into its design vision (see "Game Vision" in `CLAUDE.md`) — a **finite mushroom plot per save**, maintained by **Natalia** (a plump Siberian cat), where gameplay emerges combinatorially from mushroom × terrain × music × mob interactions. Immediate roadmap priorities: world boundary + Natalia sprite (Phase 1.5), real terrain generation (Phase 0.75), 1600-combo component-based mushrooms (Phase 2 — data shape is prepped), and biome regions (Phase 5).
 
 ---
 
@@ -79,6 +81,35 @@ Files affected are limited to the terrain provider itself, the sprite folder, an
 ### Phase 1: World Seeds & Main Menu (v1.1.0) — SHIPPED
 
 Each world has a random `uint` seed persisted in `WorldSaveData` (now with a `schemaVersion` field for future migrations). `MainMenu.unity` + `MainMenuUI` + `ReturnToMenuUI` handle New/Load/Continue/Delete flows and theme-music playback; `WorldManager` (`DontDestroyOnLoad` singleton) persists across scenes; version display and Escape-to-menu are wired.
+
+---
+
+### Phase 1.5: World Boundary & Natalia
+**Goal**: Convert the infinite scrollable field into a finite, per-save **mushroom plot**. Introduce **Natalia** — a plump Siberian cat — as the player character replacing the placeholder capsule. This is the phase that turns the tech demo into the game described in "Game Vision" (`CLAUDE.md`).
+
+**Why finite plots**: an infinite world is expensive to reason about and maintain — for both the engine and the player. A bounded plot is large enough to explore fully over many sessions, small enough that every mushroom, terrain change, and cave feels intentional. It also gives biomes, terrain, and care mechanics natural containment: Phase 5 biomes tile inside the plot, Phase 0.75 terrain has a knowable maximum extent, and player agency (Phase 2+ care mechanics) has a canvas to react to.
+
+#### Scope
+1. **`WorldBounds`** — plot dimensions in tiles baked into `WorldSaveData` at world creation. Deterministic from seed. Target range TBD, likely 256×256 to 512×512 tiles (large enough for meaningful exploration; small enough that the whole plot fits in memory and can react to player input). Save-format bump: `WorldSaveData.CURRENT_SCHEMA_VERSION` -> 2 with a migration that assigns a default plot size to pre-existing worlds.
+2. **Movement clamp** — `PlayerController` prevents movement outside the plot boundary; smooth stop at the edge (not a hard wall bounce).
+3. **Camera clamp** — `CameraController` deadzone respects plot bounds; camera can't scroll to reveal off-plot area (letterbox / matte the outside if needed).
+4. **Culling** — `MushroomGenerator` and `GroundMeshRenderer` skip tiles outside the plot. Edge indicator (fence, cliff, mist, or "you are approaching the plot boundary" HUD ping) so the player understands the boundary.
+5. **Mouse picking & search** — `MouseInteractionController` rejects clicks outside the plot; `CoordinateSearchUI` rejects out-of-range coordinates and clamps teleport destinations to the plot.
+6. **Natalia sprite** — Siberian cat character sprite (walk/sprint, 8-directional, per the existing `PlayerController` sheet layout). Placeholder capsule stays as the fallback until art lands.
+7. **New-world flow** — main menu "New Generation" doesn't need to expose plot size to the player yet; use a fixed default. If we later want variable-size plots, expose a slider or preset picker in the New World panel.
+
+**Files to modify**:
+- `Assets/Scripts/Data/WorldSaveData.cs` — add plot dimensions + migrate
+- `Assets/Scripts/Managers/WorldManager.cs` — accessor for plot bounds
+- `Assets/Scripts/Controllers/PlayerController.cs` — movement clamp
+- `Assets/Scripts/Controllers/CameraController.cs` — camera clamp
+- `Assets/Scripts/Rendering/MushroomGenerator.cs` — cull off-plot tiles
+- `Assets/Scripts/Rendering/GroundMeshRenderer.cs` — cull off-plot tiles + edge visualization
+- `Assets/Scripts/Controllers/MouseInteractionController.cs` — reject off-plot clicks
+- `Assets/Scripts/UI/CoordinateSearchUI.cs` — clamp teleport to plot
+
+**New files** (art dependent):
+- `Assets/Sprites/Character/NataliaWalk.png`, `NataliaSprint.png` (or procedural stopgap)
 
 ---
 
@@ -211,6 +242,7 @@ Each world has a random `uint` seed persisted in `WorldSaveData` (now with a `sc
 |-------|------------|--------|
 | Phase 0.5: Isometric Overhaul | Medium | Shipped |
 | Phase 1: World Seeds & Main Menu | Medium | Shipped |
+| Phase 1.5: World Boundary & Natalia | Medium | Pending — game-defining scope decision |
 | Phase 0.75: Terrain Height Generation | Medium-High | Pending — depends on slope art |
 | Phase 2: Component-Based Mushrooms | Medium | Data shape prepped; needs art + rarity rolls |
 | Phase 3: Multi-Layer Rendering | Medium | Pending — depends on Phase 2 |
