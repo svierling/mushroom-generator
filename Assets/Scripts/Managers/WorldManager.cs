@@ -97,9 +97,9 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Create a new world with the given name and plot size (default Medium).
+    /// Create a new world with the given name and plot size (default Small).
     /// </summary>
-    public WorldSaveData CreateNewWorld(string worldName, PlotSize plotSize = PlotSize.Medium)
+    public WorldSaveData CreateNewWorld(string worldName, PlotSize plotSize = PlotSize.Small)
     {
         var newWorld = WorldSaveData.CreateNew(worldName, plotSize);
         saveDataList.worlds.Add(newWorld);

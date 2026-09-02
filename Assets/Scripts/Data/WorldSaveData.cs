@@ -26,9 +26,9 @@ public class WorldSaveData
     /// <summary>
     /// Side length of the (square) plot in tiles. Bounds are ±(plotSideTiles/2),
     /// centered on world origin. Missing on schemaVersion &lt; 2 saves; the
-    /// migration in <see cref="Migrate"/> assigns Medium (512) for those.
+    /// migration in <see cref="Migrate"/> assigns Small (256) for those.
     /// </summary>
-    public int plotSideTiles = (int)PlotSize.Medium;
+    public int plotSideTiles = (int)PlotSize.Small;
 
     /// <summary>
     /// User-provided name for this world.
@@ -88,8 +88,10 @@ public class WorldSaveData
 
     /// <summary>
     /// Create a new world with a random seed and the given plot size.
+    /// Default is Small until (or unless) a user-facing plot-size selector
+    /// is re-introduced.
     /// </summary>
-    public static WorldSaveData CreateNew(string name, PlotSize plotSize = PlotSize.Medium)
+    public static WorldSaveData CreateNew(string name, PlotSize plotSize = PlotSize.Small)
     {
         return new WorldSaveData
         {
@@ -111,11 +113,11 @@ public class WorldSaveData
     public void Migrate()
     {
         // Pre-v1.2.0 saves deserialize with schemaVersion == 0 and
-        // plotSideTiles == 0. Assign Medium as the "world was infinite before"
-        // fallback so existing worlds keep working with a sensible boundary.
+        // plotSideTiles == 0. Assign Small — same default new worlds get
+        // today — so legacy saves land in a consistent shape.
         if (schemaVersion < 2 || plotSideTiles <= 0)
         {
-            plotSideTiles = (int)PlotSize.Medium;
+            plotSideTiles = (int)PlotSize.Small;
         }
         schemaVersion = CURRENT_SCHEMA_VERSION;
     }
