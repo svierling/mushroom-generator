@@ -66,6 +66,7 @@ public class PlayerController : MonoBehaviour
     private InputAction moveAction;
     private InputAction sprintAction;
     private SpriteRenderer spriteRenderer;
+    private CameraController cachedCamera;
 
     private Sprite[,] walkFrames;   // [direction, frame]
     private Sprite[,] sprintFrames;
@@ -132,10 +133,24 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-        Vector2 input = moveAction.ReadValue<Vector2>();
+        // Camera-mode gating: WASD only drives the character in Natalia mode.
+        // Free Cam mode routes the same input to the camera; Plot Overview
+        // ignores input entirely and hides the sprite.
+        if (cachedCamera == null) cachedCamera = FindFirstObjectByType<CameraController>();
+        CameraMode mode = cachedCamera != null ? cachedCamera.Mode : CameraMode.Natalia;
+
+        // Hide the character sprite (and its shadow) in Plot Overview so the
+        // "terrain + biomes + mushrooms" view stays clean per the design spec.
+        bool spriteVisible = mode != CameraMode.PlotOverview;
+        if (spriteRenderer != null && spriteRenderer.enabled != spriteVisible)
+            spriteRenderer.enabled = spriteVisible;
+        if (shadowRenderer != null && shadowRenderer.enabled != spriteVisible)
+            shadowRenderer.enabled = spriteVisible;
+
+        Vector2 input = mode == CameraMode.Natalia ? moveAction.ReadValue<Vector2>() : Vector2.zero;
         if (input.sqrMagnitude > 1f) input.Normalize();
 
-        bool isSprinting = sprintAction.IsPressed();
+        bool isSprinting = sprintAction.IsPressed() && mode == CameraMode.Natalia;
         bool isMoving = input.sqrMagnitude > 0.01f;
 
         if (isMoving)

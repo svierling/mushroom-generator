@@ -28,10 +28,21 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float deadzoneHalfHeightScreenFraction = 0.33f;
 
     [Header("Zoom")]
-    [Tooltip("Zoom multipliers in ascending order. Index 1 is the reference '1x' level; the camera's initial orthographicSize is treated as the 1x size.")]
-    [SerializeField] private float[] zoomLevels = { 0.5f, 1f, 2f };
-    [Tooltip("Which zoom level the camera boots up at. 0=0.5x, 1=1x, 2=2x.")]
-    [SerializeField] private int defaultZoomIndex = 1;
+    [Tooltip("Zoom multipliers in ascending order. The base '1x' is whatever orthographicSize the Main Camera is configured with in the scene; values below 1 zoom out (bigger view), values above 1 zoom in.")]
+    [SerializeField] private float[] zoomLevels = { 0.25f, 0.5f, 1f };
+    [Tooltip("Which zoom level the camera boots up at. Index 2 = 1x with the default zoomLevels array; press 1/2/3 to jump to 0.25x/0.5x/1x.")]
+    [SerializeField] private int defaultZoomIndex = 2;
+
+    [Header("Free Cam")]
+    [Tooltip("Camera panning speed in Unity units per second when Free Cam mode is active.")]
+    [SerializeField] private float freeCamSpeedUnitsPerSecond = 10f;
+    [Tooltip("Sprint multiplier for Free Cam movement.")]
+    [SerializeField] private float freeCamSprintMultiplier = 2.5f;
+
+    [Header("Plot Overview")]
+    [Tooltip("Padding around the plot when auto-fitting the Plot Overview view. 0 = plot bounds exactly at screen edges; 0.05 = 5% padding around it.")]
+    [Range(0f, 0.5f)]
+    [SerializeField] private float plotOverviewPadding = 0.05f;
 
     private const float CAMERA_Z = -10f;
     private const float SCROLL_STEP_THRESHOLD = 0.5f;
@@ -40,6 +51,22 @@ public class CameraController : MonoBehaviour
     private float baseOrthoSize;
     private int currentZoomIndex;
     private float scrollAccumulator;
+
+    // Camera mode state. Natalia is the default and matches shipped behaviour.
+    private CameraMode currentMode = CameraMode.Natalia;
+    // Where to restore when leaving PlotOverview. Never gets set to PlotOverview
+    // so successive V presses toggle between the fitted view and whichever
+    // mode the player was actually using.
+    private CameraMode preOverviewMode = CameraMode.Natalia;
+    // Zoom to restore when leaving PlotOverview — that mode has its own
+    // auto-fitted orthographicSize independent of the zoom preset list.
+    private int preOverviewZoomIndex;
+
+    /// <summary>Which camera mode is currently active.</summary>
+    public CameraMode Mode => currentMode;
+
+    /// <summary>Emitted when <see cref="Mode"/> changes; UI (Natalia toggle, minimap) listens.</summary>
+    public event System.Action<CameraMode> OnModeChanged;
 
     /// <summary>Camera position expressed in pre-iso pixel units (Unity units × 16). Kept for UI back-compat.</summary>
     public Vector2 CameraOffset => new Vector2(transform.position.x * 16f, transform.position.y * 16f);
@@ -76,32 +103,61 @@ public class CameraController : MonoBehaviour
     {
         if (cam == null) return;
 
-        // Number-key jumps: 1/2/3 → index 0/1/2 (0.5x / 1x / 2x)
         Keyboard kb = Keyboard.current;
-        if (kb != null)
+
+        // V toggles PlotOverview on / off — regardless of the mode we're in.
+        if (kb != null && kb.vKey.wasPressedThisFrame)
         {
-            if (kb.digit1Key.wasPressedThisFrame) SetZoomIndex(0);
-            else if (kb.digit2Key.wasPressedThisFrame) SetZoomIndex(1);
-            else if (kb.digit3Key.wasPressedThisFrame) SetZoomIndex(2);
+            if (currentMode == CameraMode.PlotOverview) ExitPlotOverview();
+            else EnterPlotOverview();
         }
 
-        // Mouse wheel: accumulate small deltas until we cross a threshold, then step.
-        // Standard scroll wheels emit ~1 unit per click; the threshold gives one
-        // zoom step per click without letting rapid trackpad flicks skip past a level.
-        Mouse mouse = Mouse.current;
-        if (mouse != null)
+        // Zoom controls (number keys + mouse wheel) are disabled in Plot
+        // Overview since that mode has its own auto-fitted zoom.
+        if (currentMode != CameraMode.PlotOverview)
         {
-            float scroll = mouse.scroll.y.ReadValue();
-            scrollAccumulator += scroll;
-            if (scrollAccumulator >  SCROLL_STEP_THRESHOLD)
+            if (kb != null)
             {
-                SetZoomIndex(currentZoomIndex + 1);
-                scrollAccumulator = 0f;
+                if (kb.digit1Key.wasPressedThisFrame) SetZoomIndex(0);
+                else if (kb.digit2Key.wasPressedThisFrame) SetZoomIndex(1);
+                else if (kb.digit3Key.wasPressedThisFrame) SetZoomIndex(2);
             }
-            else if (scrollAccumulator < -SCROLL_STEP_THRESHOLD)
+
+            Mouse mouse = Mouse.current;
+            if (mouse != null)
             {
-                SetZoomIndex(currentZoomIndex - 1);
-                scrollAccumulator = 0f;
+                float scroll = mouse.scroll.y.ReadValue();
+                scrollAccumulator += scroll;
+                if (scrollAccumulator >  SCROLL_STEP_THRESHOLD)
+                {
+                    SetZoomIndex(currentZoomIndex + 1);
+                    scrollAccumulator = 0f;
+                }
+                else if (scrollAccumulator < -SCROLL_STEP_THRESHOLD)
+                {
+                    SetZoomIndex(currentZoomIndex - 1);
+                    scrollAccumulator = 0f;
+                }
+            }
+        }
+
+        // WASD moves the camera in Free Cam mode. Natalia mode leaves this
+        // input alone so PlayerController can consume it for the character.
+        if (currentMode == CameraMode.FreeCam && kb != null)
+        {
+            float dx = 0f, dy = 0f;
+            if (kb.wKey.isPressed) dy += 1f;
+            if (kb.sKey.isPressed) dy -= 1f;
+            if (kb.dKey.isPressed) dx += 1f;
+            if (kb.aKey.isPressed) dx -= 1f;
+            if (dx != 0f || dy != 0f)
+            {
+                float speed = freeCamSpeedUnitsPerSecond;
+                if (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed) speed *= freeCamSprintMultiplier;
+                Vector3 pos = transform.position;
+                pos.x += dx * speed * Time.deltaTime;
+                pos.y += dy * speed * Time.deltaTime;
+                transform.position = new Vector3(pos.x, pos.y, CAMERA_Z);
             }
         }
     }
@@ -135,7 +191,11 @@ public class CameraController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (target == null || cam == null) return;
+        if (cam == null) return;
+
+        // Deadzone follow only runs in Natalia mode. Free Cam and Plot
+        // Overview position the camera themselves.
+        if (currentMode != CameraMode.Natalia || target == null) return;
 
         // Deadzone scales with camera zoom: the on-screen area the character
         // roams in stays consistent at 0.5x / 1x / 2x zoom. At bigger orthoSize
@@ -158,6 +218,76 @@ public class CameraController : MonoBehaviour
         if (dy < -dzHalfHeight) cameraPos.y = targetPos.y + dzHalfHeight;
 
         transform.position = new Vector3(cameraPos.x, cameraPos.y, CAMERA_Z);
+    }
+
+    /// <summary>
+    /// Switch camera mode. Called by the Natalia-view toggle (Natalia ↔ FreeCam)
+    /// and by the minimap (FreeCam when the player clicks somewhere on it).
+    /// PlotOverview is entered / exited via V and the dedicated methods below.
+    /// </summary>
+    public void SetMode(CameraMode mode)
+    {
+        if (mode == currentMode) return;
+        // Coming out of PlotOverview means restoring the fitted zoom back to
+        // the previous preset before setting the new mode.
+        if (currentMode == CameraMode.PlotOverview)
+        {
+            currentZoomIndex = preOverviewZoomIndex;
+            ApplyZoom();
+        }
+        currentMode = mode;
+        OnModeChanged?.Invoke(mode);
+    }
+
+    /// <summary>
+    /// Teleport the free camera to the given world-tile position, switching
+    /// into Free Cam mode as a side effect. Called by the minimap on click.
+    /// The character stays put.
+    /// </summary>
+    public void JumpFreeCamTo(float worldTileX, float worldTileY)
+    {
+        Vector3 unityPos = IsoProjection.WorldToUnity(worldTileX, worldTileY);
+        transform.position = new Vector3(unityPos.x, unityPos.y, CAMERA_Z);
+        SetMode(CameraMode.FreeCam);
+    }
+
+    private void EnterPlotOverview()
+    {
+        preOverviewMode      = currentMode == CameraMode.PlotOverview ? preOverviewMode : currentMode;
+        preOverviewZoomIndex = currentZoomIndex;
+        currentMode = CameraMode.PlotOverview;
+        FitCameraToPlot();
+        OnModeChanged?.Invoke(currentMode);
+    }
+
+    private void ExitPlotOverview() => SetMode(preOverviewMode);
+
+    /// <summary>
+    /// Position the camera at the plot centre and choose an orthographicSize
+    /// that fits the whole plot inside the viewport with a bit of padding.
+    /// Bounds are ±(plotSideTiles/2) in world coords; iso-projected, that's a
+    /// diamond in Unity space that we fit conservatively (worst-case width).
+    /// </summary>
+    private void FitCameraToPlot()
+    {
+        transform.position = new Vector3(0f, 0f, CAMERA_Z);
+
+        int half = WorldBounds.HalfExtent;
+        // Iso projection: worst-case Unity extent for a square plot centred
+        // on origin is width = 2*half (world +X against world +Y across the
+        // full diagonal) and height = half (top-to-bottom of the diamond).
+        // Height is smaller than width, so vertical fit typically wins.
+        float aspect = (cam != null && cam.aspect > 0f) ? cam.aspect : (16f / 9f);
+        float halfWidthUnits  = half; // (worldX - worldY) span / 2 = half
+        float halfHeightUnits = half * 0.5f; // (worldX + worldY) span / 4 = half/2
+
+        // orthographicSize is half the camera's vertical extent; ensure both
+        // dimensions fit by picking the larger of the two demands.
+        float sizeForHeight = halfHeightUnits;
+        float sizeForWidth  = halfWidthUnits / Mathf.Max(aspect, 0.0001f);
+        float fitted = Mathf.Max(sizeForHeight, sizeForWidth);
+        fitted *= (1f + plotOverviewPadding);
+        if (cam != null) cam.orthographicSize = fitted;
     }
 
     /// <summary>
